@@ -2,9 +2,15 @@ package veth.containersearch.client;
 
 import com.google.gson.Gson;
 import com.google.gson.GsonBuilder;
+import com.google.gson.JsonElement;
+import com.google.gson.JsonObject;
 import com.google.gson.reflect.TypeToken;
+import com.mojang.serialization.JsonOps;
 import net.fabricmc.loader.api.FabricLoader;
+import net.minecraft.client.Minecraft;
 import net.minecraft.core.BlockPos;
+import net.minecraft.resources.RegistryOps;
+import net.minecraft.world.item.ItemStack;
 import veth.containersearch.ContainerSearch;
 
 import java.io.IOException;
@@ -24,7 +30,7 @@ public class ContainerIndex {
     private static Path file;
     private static boolean dirty;
 
-    record Entry(Map<String, Integer> items, long time) {}
+    record Entry(List<JsonElement> stacks, long time) {}
     record Hit(String dim, String pos, int count) {}
 
     static void load(String worldKey) {
@@ -48,9 +54,12 @@ public class ContainerIndex {
         byItem.clear();
         for (var dim : data.entrySet()) {
             for (var chest : dim.getValue().entrySet()) {
-                for (var item : chest.getValue().items().entrySet()) {
-                    byItem.computeIfAbsent(item.getKey(), k -> new ArrayList<>())
-                            .add(new Hit(dim.getKey(), chest.getKey(), item.getValue()));
+                if (chest.getValue().stacks() == null) continue;
+                for (JsonElement el : chest.getValue().stacks()) {
+                    JsonObject o = el.getAsJsonObject();
+                    int count = o.has("count") ? o.get("count").getAsInt() : 1;
+                    byItem.computeIfAbsent(o.get("id").getAsString(), k -> new ArrayList<>())
+                            .add(new Hit(dim.getKey(), chest.getKey(), count));
                 }
             }
         }
@@ -69,18 +78,46 @@ public class ContainerIndex {
             ContainerSearch.LOGGER.error("Failed to save {}", file, e);
         }
     }
-    static void record(String dim, BlockPos pos, Map<String, Integer> items) {
+    private static RegistryOps<JsonElement> ops() {
+        return Minecraft.getInstance().level.registryAccess().createSerializationContext(JsonOps.INSTANCE);
+    }
+
+    static void record(String dim, BlockPos pos, List<ItemStack> stacks) {
         String key = pos.getX() + "," + pos.getY() + "," + pos.getZ();
+        List<JsonElement> encoded = new ArrayList<>();
+        for (ItemStack st : stacks) {
+            ItemStack.OPTIONAL_CODEC.encodeStart(ops(), st).result().ifPresent(encoded::add);
+        }
         Map<String, Entry> inDim = data.computeIfAbsent(dim, d -> new HashMap<>());
-        inDim.put(key, new Entry(items, System.currentTimeMillis()));
+        inDim.put(key, new Entry(encoded, System.currentTimeMillis()));
         rebuild();
         dirty = true;
-        ContainerSearch.LOGGER.info("RECORD {} -> {} (dirty)", key, items);
+        ContainerSearch.LOGGER.info("RECORD {} -> {} stacks (dirty)", key, encoded.size());
     }
     static void remove(String dim, BlockPos pos) {
-
+        Map<String, Entry> inDim = data.get(dim);
+        if (inDim == null) return;
+        if (inDim.remove(pos.getX() + "," + pos.getY() + "," + pos.getZ()) != null) {
+            rebuild();
+            dirty = true;
+        }
     }
+
     static List<Hit> search(String text) {
         return List.of();
+    }
+
+    static List<ItemStack> allItems() {
+        List<ItemStack> out = new ArrayList<>();
+        for (var dim : data.values()) {
+            for (var chest : dim.values()) {
+                if (chest.stacks() == null) continue;
+                for (JsonElement el : chest.stacks()) {
+                    ItemStack stack = ItemStack.OPTIONAL_CODEC.parse(ops(), el).result().orElse(ItemStack.EMPTY);
+                    if (!stack.isEmpty()) out.add(stack);
+                }
+            }
+        }
+        return out;
     }
 }
