@@ -1,6 +1,7 @@
 package veth.containersearch.client;
 
 import net.minecraft.client.gui.GuiGraphics;
+import net.minecraft.client.gui.components.AbstractWidget;
 import net.minecraft.client.gui.components.Button;
 import net.minecraft.client.gui.components.CycleButton;
 import net.minecraft.client.gui.components.EditBox;
@@ -17,23 +18,56 @@ public class SettingsScreen extends Screen {
 	private static final int WHITE = 0xFFFFFFFF, HEADER = 0xFFFFFF55;
 
 	private record Label(String text, int x, int y, int color) {}
+	private record Item(AbstractWidget widget, int y) {}
 
 	private final Screen parent;
 	private final List<Label> labels = new ArrayList<>();
-	private int left, boxX, colorY;
-	private String status = "";   // result of the last backup/restore click
+	private final List<Item> items = new ArrayList<>();
+	private int left, boxX, colorY, contentBottom;
+	private double scroll = 0;
+	private boolean draggingBar;
+	private Button done;
+	private String status = "";
 
 	public SettingsScreen(Screen parent) {
 		super(Component.literal("Container Search Settings"));
 		this.parent = parent;
 	}
 
+	private int viewTop() { return SearchScreen.BAR; }
+	private int viewBottom() { return height - 48; }
+	private int maxScroll() { return Math.max(0, contentBottom + 6 - viewBottom()); }
+
+	private <T extends AbstractWidget> T add(T widget) {
+		items.add(new Item(widget, widget.getY()));
+		addWidget(widget);
+		return widget;
+	}
+
 	@Override
 	protected void init() {
 		labels.clear();
+		items.clear();
 		left = width / 2 - 155;
 		boxX = width / 2 + 55;
 		int y = SearchScreen.BAR + 10;
+
+		y = header("Folders", y);
+		labels.add(new Label("Config folder", left, y + 6, WHITE));
+		add(Button.builder(Component.literal("Open config"),
+						b -> status = ContainerIndex.openConfigFolder() ? "Opened the config folder." : "Could not open the folder.")
+				.bounds(boxX, y, BOX_W, 20).build());
+		y += ROW;
+		labels.add(new Label("Saves folder", left, y + 6, WHITE));
+		add(Button.builder(Component.literal("Open folder"),
+						b -> status = ContainerIndex.openSavesFolder() ? "Opened the saves folder." : "Could not open the folder.")
+				.bounds(boxX, y, BOX_W, 20).build());
+		y += ROW;
+		labels.add(new Label("Backup folder", left, y + 6, WHITE));
+		add(Button.builder(Component.literal("Open folder"),
+						b -> status = ContainerIndex.openBackupFolder() ? "Opened the backup folder." : "Could not open the folder.")
+				.bounds(boxX, y, BOX_W, 20).build());
+		y += ROW;
 
 		y = header("Search range", y);
 		y = numberRow("Minimum chunks", Settings.minChunks, v -> Settings.minChunks = v, y);
@@ -41,7 +75,7 @@ public class SettingsScreen extends Screen {
 
 		y = header("Marker", y);
 		labels.add(new Label("Fill type", left, y + 6, WHITE));
-		addRenderableWidget(CycleButton.<Settings.MarkType>builder(t -> Component.literal(t.label))
+		add(CycleButton.<Settings.MarkType>builder(t -> Component.literal(t.label))
 				.withValues(Settings.MarkType.values())
 				.withInitialValue(Settings.markType)
 				.displayOnlyValue()
@@ -55,7 +89,7 @@ public class SettingsScreen extends Screen {
 		color.setFilter(s -> s.matches("[0-9a-fA-F]*"));
 		color.setValue(String.format("%06X", Settings.markColor));
 		color.setResponder(s -> { if (s.length() == 6) Settings.markColor = Integer.parseInt(s, 16); });
-		addRenderableWidget(color);
+		add(color);
 		y += ROW;
 
 		y = numberRow("Fade out (seconds, 0 = never)", Settings.fadeSeconds, v -> Settings.fadeSeconds = v, y);
@@ -64,22 +98,26 @@ public class SettingsScreen extends Screen {
 		y = numberRow("Autosave every (seconds, 0 = off)", Settings.autosaveSeconds, v -> Settings.autosaveSeconds = v, y);
 
 		labels.add(new Label("Backup", left, y + 6, WHITE));
-		addRenderableWidget(Button.builder(Component.literal("Backup now"),
+		add(Button.builder(Component.literal("Backup now"),
 						b -> status = ContainerIndex.backup() ? "Backup created." : "Backup failed.")
 				.bounds(boxX, y, BOX_W, 20).build());
 		y += ROW;
 		labels.add(new Label("Restore from backup", left, y + 6, WHITE));
-		addRenderableWidget(Button.builder(Component.literal("Load latest"),
+		add(Button.builder(Component.literal("Load latest"),
 						b -> status = ContainerIndex.restoreLatest() ? "Loaded the latest backup." : "No backup to load.")
 				.bounds(boxX, y, BOX_W, 20).build());
 		y += ROW;
 		labels.add(new Label("Delete latest backup", left, y + 6, WHITE));
-		addRenderableWidget(Button.builder(Component.literal("Deletes latest"),
+		add(Button.builder(Component.literal("Deletes latest"),
 						b -> status = ContainerIndex.deleteLatest() ? "Deleted latest backup." : "No backup to delete.")
 				.bounds(boxX, y, BOX_W, 20).build());
+		contentBottom = y + 20;
 
-		addRenderableWidget(Button.builder(CommonComponents.GUI_DONE, b -> onClose())
+		// Done stays fixed at the bottom, outside the scrolling area
+		done = addRenderableWidget(Button.builder(CommonComponents.GUI_DONE, b -> onClose())
 				.bounds(width / 2 - 100, height - 28, 200, 20).build());
+
+		scroll = Math.min(scroll, maxScroll());
 	}
 
 	private int header(String text, int y) {
@@ -94,8 +132,42 @@ public class SettingsScreen extends Screen {
 		box.setFilter(s -> s.matches("\\d*"));
 		box.setValue(String.valueOf(value));
 		box.setResponder(s -> { if (!s.isEmpty()) onChange.accept(Integer.parseInt(s)); });
-		addRenderableWidget(box);
+		add(box);
 		return y + ROW;
+	}
+
+	@Override
+	public boolean mouseScrolled(double mouseX, double mouseY, double scrollX, double scrollY) {
+		scroll = Math.max(0, Math.min(maxScroll(), scroll - scrollY * ROW));
+		return true;
+	}
+
+	private void dragTo(double mouseY) {
+		double frac = (mouseY - viewTop()) / (viewBottom() - viewTop());
+		scroll = Math.max(0, Math.min(maxScroll(), frac * maxScroll()));
+	}
+
+	@Override
+	public boolean mouseClicked(double mouseX, double mouseY, int button) {
+		if (button == 0 && maxScroll() > 0 && mouseX >= width - 10 && mouseY >= viewTop() && mouseY < viewBottom()) {
+			draggingBar = true;
+			dragTo(mouseY);
+			return true;
+		}
+		if (mouseY >= viewTop() && mouseY < viewBottom()) return super.mouseClicked(mouseX, mouseY, button);
+		return done.mouseClicked(mouseX, mouseY, button);
+	}
+
+	@Override
+	public boolean mouseDragged(double mouseX, double mouseY, int button, double dx, double dy) {
+		if (draggingBar) { dragTo(mouseY); return true; }
+		return super.mouseDragged(mouseX, mouseY, button, dx, dy);
+	}
+
+	@Override
+	public boolean mouseReleased(double mouseX, double mouseY, int button) {
+		draggingBar = false;
+		return super.mouseReleased(mouseX, mouseY, button);
 	}
 
 	@Override
@@ -107,12 +179,30 @@ public class SettingsScreen extends Screen {
 	@Override
 	public void render(GuiGraphics g, int mouseX, int mouseY, float delta) {
 		super.render(g, mouseX, mouseY, delta);
-		for (Label l : labels) g.drawString(font, l.text(), l.x(), l.y(), l.color());
+		int off = (int) scroll;
+
+		g.enableScissor(0, viewTop(), width, viewBottom());
+		for (Label l : labels) g.drawString(font, l.text(), l.x(), l.y() - off, l.color());
+
+		int sx = boxX + BOX_W + 6, sy = colorY - off;
+		g.fill(sx, sy, sx + 20, sy + 20, 0xFFFFFFFF);
+		g.fill(sx + 1, sy + 1, sx + 19, sy + 19, 0xFF000000 | Settings.markColor);
+
+		for (Item it : items) {
+			it.widget().setY(it.y() - off);
+			it.widget().render(g, mouseX, mouseY, delta);
+		}
+		g.disableScissor();
+
 		g.drawCenteredString(font, status, width / 2, height - 42, 0xFFAAAAAA);
 
-		int sx = boxX + BOX_W + 6;
-		g.fill(sx, colorY, sx + 20, colorY + 20, 0xFFFFFFFF);
-		g.fill(sx + 1, colorY + 1, sx + 19, colorY + 19, 0xFF000000 | Settings.markColor);
+		if (maxScroll() > 0) {
+			int viewH = viewBottom() - viewTop();
+			int thumbH = Math.max(20, viewH * viewH / (viewH + maxScroll()));
+			int thumbY = viewTop() + (int) ((viewH - thumbH) * scroll / maxScroll());
+			g.fill(width - 8, viewTop(), width - 4, viewBottom(), 0x60000000);
+			g.fill(width - 8, thumbY, width - 4, thumbY + thumbH, 0xFFAAAAAA);
+		}
 	}
 
 	@Override

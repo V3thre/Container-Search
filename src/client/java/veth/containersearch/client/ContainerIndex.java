@@ -7,6 +7,7 @@ import com.google.gson.JsonObject;
 import com.google.gson.reflect.TypeToken;
 import com.mojang.serialization.JsonOps;
 import net.fabricmc.loader.api.FabricLoader;
+import net.minecraft.Util;
 import net.minecraft.client.Minecraft;
 import net.minecraft.core.BlockPos;
 import net.minecraft.resources.RegistryOps;
@@ -60,9 +61,38 @@ public class ContainerIndex {
 
     private static final DateTimeFormatter STAMP = DateTimeFormatter.ofPattern("yyyy-MM-dd_HH-mm-ss");
 
+    static boolean openConfigFolder() {
+        Util.getPlatform().openPath(FabricLoader.getInstance().getConfigDir());
+        return true;
+    }
+
+    static boolean openSavesFolder() {
+        try {
+            Path dir = FabricLoader.getInstance().getConfigDir().resolve("containersearch");
+            Files.createDirectories(dir);
+            Util.getPlatform().openPath(dir);
+            return true;
+        } catch (IOException e) {
+            ContainerSearch.LOGGER.error("Could not open saves folder", e);
+            return false;
+        }
+    }
+
     private static Path backupDir() {
         String name = file.getFileName().toString().replaceFirst("\\.json$", "");
         return file.getParent().resolve("backups").resolve(name);
+    }
+
+    static boolean openBackupFolder() {
+        if (file == null) return false;
+        try {
+            Files.createDirectories(backupDir());
+            Util.getPlatform().openPath(backupDir());
+            return true;
+        } catch (IOException e) {
+            ContainerSearch.LOGGER.error("Could not open backup folder", e);
+            return false;
+        }
     }
 
     static boolean backup() {
