@@ -5,7 +5,9 @@ import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.client.gui.components.AbstractSliderButton;
 import net.minecraft.client.gui.screens.Screen;
+import net.minecraft.commands.arguments.EntityAnchorArgument;
 import net.minecraft.core.BlockPos;
+import net.minecraft.world.phys.Vec3;
 import net.minecraft.network.chat.Component;
 import net.minecraft.world.item.ItemStack;
 
@@ -53,6 +55,27 @@ public class SearchScreen extends Screen {
 	public boolean mouseScrolled(double mouseX, double mouseY, double scrollX, double scrollY) {
 		scroll = Math.max(0, Math.min(maxScroll(), scroll - scrollY * CELL));
 		return true;
+	}
+
+	@Override
+	public boolean mouseClicked(double mouseX, double mouseY, int button) {
+		if (super.mouseClicked(mouseX, mouseY, button)) return true;
+		if (button != 0 || mouseY < listTop() || mouseY >= listBottom()) return false;
+		int cols = cols();
+		for (int i = 0; i < stacks.size(); i++) {
+			int x = MARGIN + (i % cols) * CELL;
+			int y = listTop() + (i / cols) * CELL - (int) scroll;
+			if (mouseX >= x && mouseX < x + CELL && mouseY >= y && mouseY < y + CELL) {
+				ContainerIndex.Found f = stacks.get(i);
+				Minecraft mc = Minecraft.getInstance();
+				if (f.dim().equals(mc.level.dimension().location().toString())) {
+					mc.player.lookAt(EntityAnchorArgument.Anchor.EYES, Vec3.atCenterOf(f.pos()));
+					onClose();
+				}
+				return true;
+			}
+		}
+		return false;
 	}
 
 	@Override
