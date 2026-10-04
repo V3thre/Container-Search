@@ -34,6 +34,7 @@ import java.util.List;
 public class ContainerSearchClient implements ClientModInitializer {
 	private static BlockPos lastPos;
 	private static ResourceLocation lastDim;
+	private static int autosaveTicks;
 	@Override
 	public void onInitializeClient() {
 		ClientPlayConnectionEvents.JOIN.register((handler, sender, minecraft) -> {
@@ -58,6 +59,15 @@ public class ContainerSearchClient implements ClientModInitializer {
 		});
 		Marking.register();
 		Settings.load();
+
+		//autosave
+		ClientTickEvents.END_CLIENT_TICK.register(client -> {
+			if (client.level == null || Settings.autosaveSeconds <= 0) { autosaveTicks = 0; return; }
+			if (++autosaveTicks >= Settings.autosaveSeconds * 20) {
+				autosaveTicks = 0;
+				ContainerIndex.save();
+			}
+		});
 
 		KeyMapping openKey = KeyBindingHelper.registerKeyBinding(
 				new KeyMapping("key.container-search.open", GLFW.GLFW_KEY_G, "key.categories.container-search"));

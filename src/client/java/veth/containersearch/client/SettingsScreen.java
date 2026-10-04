@@ -60,7 +60,15 @@ public class SettingsScreen extends Screen {
 		y = numberRow("Fade out (seconds, 0 = never)", Settings.fadeSeconds, v -> Settings.fadeSeconds = v, y);
 
 		y = header("Saving", y);
-		numberRow("Autosave every (seconds, 0 = off)", Settings.autosaveSeconds, v -> Settings.autosaveSeconds = v, y);
+		y = numberRow("Autosave every (seconds, 0 = off)", Settings.autosaveSeconds, v -> Settings.autosaveSeconds = v, y);
+
+		labels.add(new Label("Backup", left, y + 6, WHITE));
+		addRenderableWidget(Button.builder(Component.literal("Backup now"), b -> {})
+				.bounds(boxX, y, BOX_W, 20).build());
+		y += ROW;
+		labels.add(new Label("Restore from backup", left, y + 6, WHITE));
+		addRenderableWidget(Button.builder(Component.literal("Load latest"), b -> {})
+				.bounds(boxX, y, BOX_W, 20).build());
 
 		addRenderableWidget(Button.builder(CommonComponents.GUI_DONE, b -> onClose())
 				.bounds(width / 2 - 100, height - 28, 200, 20).build());
