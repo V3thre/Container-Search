@@ -7,7 +7,7 @@ this mod requires only fabric api to function nothing else, and is currently onl
 
 ## Building instructions
 
-For building instructions, please see the [Fabric Documentation page]([https://docs.fabricmc.net/develop/getting-started/creating-a-project#setting-up](https://docs.fabricmc.net/develop/getting-started/building-a-mod)) related to the IDE that you are using.
+For building instructions, please see the [Fabric Documentation page]([https://docs.fabricmc.net/develop/getting-started/building-a-mod]) related to the IDE that you are using.
 
 ## License
 
