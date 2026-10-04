@@ -55,7 +55,7 @@ public class ContainerSearchClient implements ClientModInitializer {
 		ClientPlayConnectionEvents.DISCONNECT.register((handler, client) -> ContainerIndex.save());
 
 		KeyMapping openKey = KeyBindingHelper.registerKeyBinding(
-				new KeyMapping("key.container-search.open", GLFW.GLFW_KEY_G, "key.categories.misc"));
+				new KeyMapping("key.container-search.open", GLFW.GLFW_KEY_G, "key.categories.container-search"));
 		ClientTickEvents.END_CLIENT_TICK.register(client -> {
 			while (openKey.consumeClick()) client.setScreen(new SearchScreen());
 		});

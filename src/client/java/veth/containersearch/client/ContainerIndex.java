@@ -109,21 +109,24 @@ public class ContainerIndex {
 
     static final int INFINITE = -1;
 
-    static List<ItemStack> allItems(String playerDim, int chunkX, int chunkZ, int range) {
-        List<ItemStack> out = new ArrayList<>();
+    record Found(ItemStack stack, String dim, BlockPos pos) {}
+
+    static List<Found> allItems(String playerDim, int chunkX, int chunkZ, int range) {
+        List<Found> out = new ArrayList<>();
         for (var dim : data.entrySet()) {
             if (range != INFINITE && !dim.getKey().equals(playerDim)) continue;
             for (var chest : dim.getValue().entrySet()) {
                 if (chest.getValue().stacks() == null) continue;
+                String[] p = chest.getKey().split(",");
+                BlockPos pos = new BlockPos(Integer.parseInt(p[0]), Integer.parseInt(p[1]), Integer.parseInt(p[2]));
                 if (range != INFINITE) {
-                    String[] p = chest.getKey().split(",");
-                    int dx = Math.abs((Integer.parseInt(p[0]) >> 4) - chunkX);
-                    int dz = Math.abs((Integer.parseInt(p[2]) >> 4) - chunkZ);
+                    int dx = Math.abs((pos.getX() >> 4) - chunkX);
+                    int dz = Math.abs((pos.getZ() >> 4) - chunkZ);
                     if (Math.max(dx, dz) > range) continue;
                 }
                 for (JsonElement el : chest.getValue().stacks()) {
                     ItemStack stack = ItemStack.OPTIONAL_CODEC.parse(ops(), el).result().orElse(ItemStack.EMPTY);
-                    if (!stack.isEmpty()) out.add(stack);
+                    if (!stack.isEmpty()) out.add(new Found(stack, dim.getKey(), pos));
                 }
             }
         }

@@ -1,5 +1,6 @@
 package veth.containersearch.client;
 
+import net.minecraft.ChatFormatting;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.client.gui.components.AbstractSliderButton;
@@ -8,6 +9,8 @@ import net.minecraft.core.BlockPos;
 import net.minecraft.network.chat.Component;
 import net.minecraft.world.item.ItemStack;
 
+import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.List;
 
 public class SearchScreen extends Screen {
@@ -15,7 +18,7 @@ public class SearchScreen extends Screen {
 	private static final int STEPS = 63;
 	private static int range = 16;
 
-	private List<ItemStack> stacks = List.of();
+	private List<ContainerIndex.Found> stacks = List.of();
 	private double scroll = 0;
 
 	public SearchScreen() {
@@ -31,7 +34,12 @@ public class SearchScreen extends Screen {
 	private void refresh() {
 		Minecraft mc = Minecraft.getInstance();
 		BlockPos p = mc.player.blockPosition();
-		stacks = ContainerIndex.allItems(mc.level.dimension().location().toString(), p.getX() >> 4, p.getZ() >> 4, range);
+		String dim = mc.level.dimension().location().toString();
+		stacks = new ArrayList<>(ContainerIndex.allItems(dim, p.getX() >> 4, p.getZ() >> 4, range));
+		//closets container first
+		stacks.sort(Comparator.comparingDouble(f -> f.dim().equals(dim)
+				? mc.player.distanceToSqr(f.pos().getX() + 0.5, f.pos().getY() + 0.5, f.pos().getZ() + 0.5)
+				: Double.MAX_VALUE));
 		scroll = Math.min(scroll, maxScroll());
 	}
 
@@ -57,24 +65,43 @@ public class SearchScreen extends Screen {
 
 	@Override
 	public void render(GuiGraphics g, int mouseX, int mouseY, float delta) {
-		super.render(g, mouseX, mouseY, delta);               // background, bars and slider
+		super.render(g, mouseX, mouseY, delta);
 		int cols = cols();
-		ItemStack hovered = null;
+		ContainerIndex.Found hovered = null;
 
 		g.enableScissor(MARGIN, listTop(), width - MARGIN, listBottom());
 		for (int i = 0; i < stacks.size(); i++) {
 			int x = MARGIN + (i % cols) * CELL;
 			int y = listTop() + (i / cols) * CELL - (int) scroll;
 			if (y + CELL < listTop() || y > listBottom()) continue;
-			ItemStack st = stacks.get(i);
-			g.renderItem(st, x, y);
-			g.renderItemDecorations(font, st, x, y);
+			ContainerIndex.Found f = stacks.get(i);
+			g.renderItem(f.stack(), x, y);
+			g.renderItemDecorations(font, f.stack(), x, y);
 			if (mouseX >= x && mouseX < x + CELL && mouseY >= y && mouseY < y + CELL
-					&& mouseY >= listTop() && mouseY < listBottom()) hovered = st;
+					&& mouseY >= listTop() && mouseY < listBottom()) {
+				hovered = f;
+				g.fill(x, y, x + 16, y + 16, 0x80FFFFFF);
+			}
 		}
 		g.disableScissor();
 
-		if (hovered != null) g.renderTooltip(font, hovered, mouseX, mouseY);
+		if (hovered != null) renderFoundTooltip(g, hovered, mouseX, mouseY);
+	}
+
+	private void renderFoundTooltip(GuiGraphics g, ContainerIndex.Found f, int mouseX, int mouseY) {
+		Minecraft mc = Minecraft.getInstance();
+		List<Component> lines = new ArrayList<>(getTooltipFromItem(mc, f.stack()));
+
+		BlockPos p = f.pos();
+		if (f.dim().equals(mc.level.dimension().location().toString())) {
+			double dist = Math.sqrt(mc.player.distanceToSqr(p.getX() + 0.5, p.getY() + 0.5, p.getZ() + 0.5));
+			lines.add(Component.literal(String.format("Distance: %.1f blocks", dist)).withStyle(ChatFormatting.GRAY));
+		} else {
+			lines.add(Component.literal("Distance: another dimension (" + f.dim() + ")").withStyle(ChatFormatting.GRAY));
+		}
+		lines.add(Component.literal("Position: " + p.getX() + ", " + p.getY() + ", " + p.getZ()).withStyle(ChatFormatting.GRAY));
+
+		g.renderTooltip(font, lines, f.stack().getTooltipImage(), mouseX, mouseY);
 	}
 
 	private class RangeSlider extends AbstractSliderButton {
