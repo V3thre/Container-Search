@@ -11,7 +11,6 @@ import net.minecraft.commands.arguments.EntityAnchorArgument;
 import net.minecraft.core.BlockPos;
 import net.minecraft.world.phys.Vec3;
 import net.minecraft.network.chat.Component;
-import net.minecraft.world.item.ItemStack;
 
 import java.util.ArrayList;
 import java.util.Comparator;
@@ -20,7 +19,7 @@ import java.util.List;
 public class SearchScreen extends Screen {
 	private static final int CELL = 18, MARGIN = 10;
 	static final int BAR = 24;
-	private static final int STEPS = 63;
+	private static int steps() { return Settings.maxChunks - Settings.minChunks + 1; }
 	private static int range = 16;
 
 	private List<ContainerIndex.Found> stacks = List.of();
@@ -32,10 +31,11 @@ public class SearchScreen extends Screen {
 
 	@Override
 	protected void init() {
+		if (range != ContainerIndex.INFINITE) range = Math.max(Settings.minChunks, Math.min(Settings.maxChunks, range));
 		refresh();
 		addRenderableWidget(new RangeSlider(width / 2 - 100, height - BAR + 2, 200, 20));
 		addRenderableWidget(Button.builder(Component.literal("Settings"), b -> minecraft.setScreen(new SettingsScreen(this)))
-				.bounds(width - 74, 2, 70, 20).build());   // top right, inside the top bar
+				.bounds(width - 74, 2, 70, 20).build());
 	}
 
 	private void refresh() {
@@ -139,7 +139,7 @@ public class SearchScreen extends Screen {
 
 	private class RangeSlider extends AbstractSliderButton {
 		RangeSlider(int x, int y, int w, int h) {
-			super(x, y, w, h, Component.empty(), (range == ContainerIndex.INFINITE ? STEPS : range - 2) / (double) STEPS);
+			super(x, y, w, h, Component.empty(), (range == ContainerIndex.INFINITE ? steps() : range - Settings.minChunks) / (double) steps());
 			updateMessage();
 		}
 
@@ -150,8 +150,8 @@ public class SearchScreen extends Screen {
 
 		@Override
 		protected void applyValue() {
-			int i = (int) Math.round(value * STEPS);
-			range = (i == STEPS) ? ContainerIndex.INFINITE : i + 2;
+			int i = (int) Math.round(value * steps());
+			range = (i == steps()) ? ContainerIndex.INFINITE : i + Settings.minChunks;
 			refresh();
 		}
 	}

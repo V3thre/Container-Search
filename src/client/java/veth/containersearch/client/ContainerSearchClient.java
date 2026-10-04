@@ -57,6 +57,7 @@ public class ContainerSearchClient implements ClientModInitializer {
 			Marking.clear();
 		});
 		Marking.register();
+		Settings.load();
 
 		KeyMapping openKey = KeyBindingHelper.registerKeyBinding(
 				new KeyMapping("key.container-search.open", GLFW.GLFW_KEY_G, "key.categories.container-search"));
