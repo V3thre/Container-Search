@@ -21,6 +21,7 @@ public class SettingsScreen extends Screen {
 	private final Screen parent;
 	private final List<Label> labels = new ArrayList<>();
 	private int left, boxX, colorY;
+	private String status = "";   // result of the last backup/restore click
 
 	public SettingsScreen(Screen parent) {
 		super(Component.literal("Container Search Settings"));
@@ -63,15 +64,18 @@ public class SettingsScreen extends Screen {
 		y = numberRow("Autosave every (seconds, 0 = off)", Settings.autosaveSeconds, v -> Settings.autosaveSeconds = v, y);
 
 		labels.add(new Label("Backup", left, y + 6, WHITE));
-		addRenderableWidget(Button.builder(Component.literal("Backup now"), b -> {})
+		addRenderableWidget(Button.builder(Component.literal("Backup now"),
+						b -> status = ContainerIndex.backup() ? "Backup created." : "Backup failed.")
 				.bounds(boxX, y, BOX_W, 20).build());
 		y += ROW;
 		labels.add(new Label("Restore from backup", left, y + 6, WHITE));
-		addRenderableWidget(Button.builder(Component.literal("Load latest"), b -> {})
+		addRenderableWidget(Button.builder(Component.literal("Load latest"),
+						b -> status = ContainerIndex.restoreLatest() ? "Loaded the latest backup." : "No backup to load.")
 				.bounds(boxX, y, BOX_W, 20).build());
 		y += ROW;
 		labels.add(new Label("Delete latest backup", left, y + 6, WHITE));
-		addRenderableWidget(Button.builder(Component.literal("Deletes latest"), b -> {})
+		addRenderableWidget(Button.builder(Component.literal("Deletes latest"),
+						b -> status = ContainerIndex.deleteLatest() ? "Deleted latest backup." : "No backup to delete.")
 				.bounds(boxX, y, BOX_W, 20).build());
 
 		addRenderableWidget(Button.builder(CommonComponents.GUI_DONE, b -> onClose())
@@ -104,6 +108,7 @@ public class SettingsScreen extends Screen {
 	public void render(GuiGraphics g, int mouseX, int mouseY, float delta) {
 		super.render(g, mouseX, mouseY, delta);
 		for (Label l : labels) g.drawString(font, l.text(), l.x(), l.y(), l.color());
+		g.drawCenteredString(font, status, width / 2, height - 42, 0xFFAAAAAA);
 
 		int sx = boxX + BOX_W + 6;
 		g.fill(sx, colorY, sx + 20, colorY + 20, 0xFFFFFFFF);

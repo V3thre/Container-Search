@@ -18,7 +18,10 @@ import java.io.Reader;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
+import java.time.LocalDateTime;
+import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -38,9 +41,8 @@ public class ContainerIndex {
         data = new HashMap<>();
         dirty = false;
         if (Files.exists(file)) {
-            try (Reader r = Files.newBufferedReader(file)) {
-                Map<String, Map<String, Entry>> loaded =
-                        GSON.fromJson(r, new TypeToken<Map<String, Map<String, Entry>>>() {}.getType());
+            try {
+                Map<String, Map<String, Entry>> loaded = read(file);
                 if (loaded != null) data = loaded;
             } catch (Exception e) {
                 ContainerSearch.LOGGER.error("Failed to load {}", file, e);
@@ -48,6 +50,67 @@ public class ContainerIndex {
         }
         rebuild();
         ContainerSearch.LOGGER.info("LOAD {} exists={} dims={}", file, Files.exists(file), data.size());
+    }
+
+    private static Map<String, Map<String, Entry>> read(Path p) throws IOException {
+        try (Reader r = Files.newBufferedReader(p)) {
+            return GSON.fromJson(r, new TypeToken<Map<String, Map<String, Entry>>>() {}.getType());
+        }
+    }
+
+    private static final DateTimeFormatter STAMP = DateTimeFormatter.ofPattern("yyyy-MM-dd_HH-mm-ss");
+
+    private static Path backupDir() {
+        String name = file.getFileName().toString().replaceFirst("\\.json$", "");
+        return file.getParent().resolve("backups").resolve(name);
+    }
+
+    static boolean backup() {
+        if (file == null) return false;
+        try {
+            Files.createDirectories(backupDir());
+            Path out = backupDir().resolve(LocalDateTime.now().format(STAMP) + ".json");
+            Files.writeString(out, GSON.toJson(data));
+            ContainerSearch.LOGGER.info("BACKUP {}", out);
+            return true;
+        } catch (IOException e) {
+            ContainerSearch.LOGGER.error("Backup failed", e);
+            return false;
+        }
+    }
+
+    static boolean restoreLatest() {
+        if (file == null || !Files.isDirectory(backupDir())) return false;
+        try (var files = Files.list(backupDir())) {
+            Path latest = files.filter(p -> p.toString().endsWith(".json"))
+                    .max(Comparator.comparing(p -> p.getFileName().toString())).orElse(null);
+            if (latest == null) return false;
+            Map<String, Map<String, Entry>> loaded = read(latest);
+            if (loaded == null) return false;
+            data = loaded;
+            rebuild();
+            dirty = true;
+            save();
+            ContainerSearch.LOGGER.info("RESTORED {}", latest);
+            return true;
+        } catch (Exception e) {
+            ContainerSearch.LOGGER.error("Restore failed", e);
+            return false;
+        }
+    }
+
+    static boolean deleteLatest() {
+        if (file == null || !Files.isDirectory(backupDir())) return false;
+        try (var files = Files.list(backupDir())) {
+            Path latest = files.filter(p -> p.toString().endsWith(".json"))
+                    .max(Comparator.comparing(p -> p.getFileName().toString())).orElse(null);
+            if (latest == null) return false;
+            Files.deleteIfExists(latest);
+            return true;
+        } catch (IOException e) {
+            ContainerSearch.LOGGER.error("deletion failed", e);
+            return false;
+        }
     }
 
     private static void rebuild() {
