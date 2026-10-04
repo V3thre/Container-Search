@@ -52,7 +52,11 @@ public class ContainerSearchClient implements ClientModInitializer {
 			ContainerIndex.load(worldKey);
 		});
 
-		ClientPlayConnectionEvents.DISCONNECT.register((handler, client) -> ContainerIndex.save());
+		ClientPlayConnectionEvents.DISCONNECT.register((handler, client) -> {
+			ContainerIndex.save();
+			Marking.clear();
+		});
+		Marking.register();
 
 		KeyMapping openKey = KeyBindingHelper.registerKeyBinding(
 				new KeyMapping("key.container-search.open", GLFW.GLFW_KEY_G, "key.categories.container-search"));
@@ -93,6 +97,7 @@ public class ContainerSearchClient implements ClientModInitializer {
 							if (otherHalf.compareTo(pos) < 0) { BlockPos t = pos; pos = otherHalf; otherHalf = t; }
 						}
 						ContainerIndex.record(lastDim.toString(), pos, items);
+						if (pos.equals(Marking.target)) Marking.clear();   // you reached it, drop the outline
 						if (otherHalf != null) ContainerIndex.remove(lastDim.toString(), otherHalf);   // also clears old duplicates
 						lastPos = null;
 				});

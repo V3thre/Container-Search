@@ -2,8 +2,10 @@ package veth.containersearch.client;
 
 import net.minecraft.ChatFormatting;
 import net.minecraft.client.Minecraft;
+import net.minecraft.client.gui.Font;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.client.gui.components.AbstractSliderButton;
+import net.minecraft.client.gui.components.Button;
 import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.commands.arguments.EntityAnchorArgument;
 import net.minecraft.core.BlockPos;
@@ -16,7 +18,8 @@ import java.util.Comparator;
 import java.util.List;
 
 public class SearchScreen extends Screen {
-	private static final int CELL = 18, MARGIN = 10, BAR = 24;
+	private static final int CELL = 18, MARGIN = 10;
+	static final int BAR = 24;
 	private static final int STEPS = 63;
 	private static int range = 16;
 
@@ -31,6 +34,8 @@ public class SearchScreen extends Screen {
 	protected void init() {
 		refresh();
 		addRenderableWidget(new RangeSlider(width / 2 - 100, height - BAR + 2, 200, 20));
+		addRenderableWidget(Button.builder(Component.literal("Settings"), b -> minecraft.setScreen(new SettingsScreen(this)))
+				.bounds(width - 74, 2, 70, 20).build());   // top right, inside the top bar
 	}
 
 	private void refresh() {
@@ -43,6 +48,11 @@ public class SearchScreen extends Screen {
 				? mc.player.distanceToSqr(f.pos().getX() + 0.5, f.pos().getY() + 0.5, f.pos().getZ() + 0.5)
 				: Double.MAX_VALUE));
 		scroll = Math.min(scroll, maxScroll());
+	}
+
+	static void drawTitleBar(GuiGraphics g, Font font, Component title, int width) {
+		g.fill(0, 0, width, BAR, 0x47404040);
+		g.drawCenteredString(font, title, width / 2, (BAR - font.lineHeight) / 2, 0xFFFFFFFF);
 	}
 
 	private int listTop() { return BAR; }
@@ -69,6 +79,7 @@ public class SearchScreen extends Screen {
 				ContainerIndex.Found f = stacks.get(i);
 				Minecraft mc = Minecraft.getInstance();
 				if (f.dim().equals(mc.level.dimension().location().toString())) {
+					Marking.set(f.dim(), f.pos());
 					mc.player.lookAt(EntityAnchorArgument.Anchor.EYES, Vec3.atCenterOf(f.pos()));
 					onClose();
 				}
@@ -81,9 +92,8 @@ public class SearchScreen extends Screen {
 	@Override
 	public void renderBackground(GuiGraphics g, int mouseX, int mouseY, float delta) {
 		super.renderBackground(g, mouseX, mouseY, delta);
-		g.fill(0, 0, width, BAR, 0x47404040);
+		drawTitleBar(g, font, title, width);
 		g.fill(0, height - BAR, width, height, 0x47404040);
-		g.drawCenteredString(font, title, width / 2, (BAR - font.lineHeight) / 2, 0xFFFFFFFF);
 	}
 
 	@Override
