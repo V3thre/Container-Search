@@ -1,6 +1,9 @@
 package veth.containersearch.client;
 
+import com.mojang.blaze3d.platform.InputConstants;
+import net.minecraft.client.KeyMapping;
 import net.minecraft.client.gui.GuiGraphics;
+import net.minecraft.client.gui.components.AbstractSliderButton;
 import net.minecraft.client.gui.components.AbstractWidget;
 import net.minecraft.client.gui.components.Button;
 import net.minecraft.client.gui.components.CycleButton;
@@ -8,10 +11,12 @@ import net.minecraft.client.gui.components.EditBox;
 import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.network.chat.CommonComponents;
 import net.minecraft.network.chat.Component;
+import org.lwjgl.glfw.GLFW;
 
 import java.util.ArrayList;
 import java.util.List;
 import java.util.function.IntConsumer;
+import java.util.function.IntSupplier;
 
 public class SettingsScreen extends Screen {
 	private static final int ROW = 22, BOX_W = 100;
@@ -19,14 +24,18 @@ public class SettingsScreen extends Screen {
 
 	private record Label(String text, int x, int y, int color) {}
 	private record Item(AbstractWidget widget, int y) {}
+	private record Swatch(int y, IntSupplier color) {}
 
 	private final Screen parent;
 	private final List<Label> labels = new ArrayList<>();
 	private final List<Item> items = new ArrayList<>();
-	private int left, boxX, colorY, contentBottom;
+	private final List<Swatch> swatches = new ArrayList<>();
+	private int left, boxX, contentBottom;
 	private double scroll = 0;
 	private boolean draggingBar;
 	private Button done;
+	private Button keyButton;
+	private boolean listening;
 	private String status = "";
 
 	public SettingsScreen(Screen parent) {
@@ -48,6 +57,7 @@ public class SettingsScreen extends Screen {
 	protected void init() {
 		labels.clear();
 		items.clear();
+		swatches.clear();
 		left = width / 2 - 155;
 		boxX = width / 2 + 55;
 		int y = SearchScreen.BAR + 10;
@@ -81,18 +91,30 @@ public class SettingsScreen extends Screen {
 				.displayOnlyValue()
 				.create(boxX, y, BOX_W, 20, Component.empty(), (btn, v) -> Settings.markType = v));
 		y += ROW;
-
-		labels.add(new Label("Color (hex)", left, y + 6, WHITE));
-		colorY = y;
-		EditBox color = new EditBox(font, boxX, y, BOX_W, 20, Component.literal("Color"));
-		color.setMaxLength(6);
-		color.setFilter(s -> s.matches("[0-9a-fA-F]*"));
-		color.setValue(String.format("%06X", Settings.markColor));
-		color.setResponder(s -> { if (s.length() == 6) Settings.markColor = Integer.parseInt(s, 16); });
-		add(color);
-		y += ROW;
-
+		y = colorRow("Color (hex)", Settings.markColor, v -> Settings.markColor = v, () -> Settings.markColor, y);
 		y = numberRow("Fade out (seconds, 0 = never)", Settings.fadeSeconds, v -> Settings.fadeSeconds = v, y);
+
+		y = header("Unchecked containers", y);
+		labels.add(new Label("Show unchecked", left, y + 6, WHITE));
+		add(CycleButton.onOffBuilder(Settings.showUnchecked)
+				.displayOnlyValue()
+				.create(boxX, y, BOX_W, 20, Component.empty(), (btn, v) -> Settings.showUnchecked = v));
+		y += ROW;
+		labels.add(new Label("Fill type", left, y + 6, WHITE));
+		add(CycleButton.<Settings.MarkType>builder(t -> Component.literal(t.label))
+				.withValues(Settings.MarkType.values())
+				.withInitialValue(Settings.uncheckedType)
+				.displayOnlyValue()
+				.create(boxX, y, BOX_W, 20, Component.empty(), (btn, v) -> Settings.uncheckedType = v));
+		y += ROW;
+		y = colorRow("Color (hex)", Settings.uncheckedColor, v -> Settings.uncheckedColor = v, () -> Settings.uncheckedColor, y);
+		labels.add(new Label("Range", left, y + 6, WHITE));
+		add(new UncheckedRangeSlider(boxX, y, BOX_W, 20));
+		y += ROW;
+		labels.add(new Label("Toggle key", left, y + 6, WHITE));
+		keyButton = add(Button.builder(keyLabel(), b -> { listening = true; keyButton.setMessage(keyLabel()); })
+				.bounds(boxX, y, BOX_W, 20).build());
+		y += ROW;
 
 		y = header("Saving", y);
 		y = numberRow("Autosave every (seconds, 0 = off)", Settings.autosaveSeconds, v -> Settings.autosaveSeconds = v, y);
@@ -113,7 +135,6 @@ public class SettingsScreen extends Screen {
 				.bounds(boxX, y, BOX_W, 20).build());
 		contentBottom = y + 20;
 
-		// Done stays fixed at the bottom, outside the scrolling area
 		done = addRenderableWidget(Button.builder(CommonComponents.GUI_DONE, b -> onClose())
 				.bounds(width / 2 - 100, height - 28, 200, 20).build());
 
@@ -134,6 +155,55 @@ public class SettingsScreen extends Screen {
 		box.setResponder(s -> { if (!s.isEmpty()) onChange.accept(Integer.parseInt(s)); });
 		add(box);
 		return y + ROW;
+	}
+
+	private int colorRow(String label, int value, IntConsumer onChange, IntSupplier current, int y) {
+		labels.add(new Label(label, left, y + 6, WHITE));
+		swatches.add(new Swatch(y, current));
+		EditBox box = new EditBox(font, boxX, y, BOX_W, 20, Component.literal(label));
+		box.setMaxLength(6);
+		box.setFilter(s -> s.matches("[0-9a-fA-F]*"));
+		box.setValue(String.format("%06X", value));
+		box.setResponder(s -> { if (s.length() == 6) onChange.accept(Integer.parseInt(s, 16)); });
+		add(box);
+		return y + ROW;
+	}
+
+	private Component keyLabel() {
+		return listening ? Component.literal("> press a key <") : Unchecked.toggleKey.getTranslatedKeyMessage();
+	}
+
+	@Override
+	public boolean keyPressed(int keyCode, int scanCode, int modifiers) {
+		if (listening) {
+			InputConstants.Key key = keyCode == GLFW.GLFW_KEY_ESCAPE ? InputConstants.UNKNOWN : InputConstants.getKey(keyCode, scanCode);
+			Unchecked.toggleKey.setKey(key);
+			KeyMapping.resetMapping();
+			minecraft.options.save();
+			listening = false;
+			keyButton.setMessage(keyLabel());
+			return true;
+		}
+		return super.keyPressed(keyCode, scanCode, modifiers);
+	}
+
+	private class UncheckedRangeSlider extends AbstractSliderButton {
+		UncheckedRangeSlider(int x, int y, int w, int h) {
+			super(x, y, w, h, Component.empty(), (Unchecked.effectiveChunks() - 1) / (double) Math.max(1, Unchecked.renderDistance() - 1));
+			updateMessage();
+		}
+
+		@Override
+		protected void updateMessage() {
+			setMessage(Component.literal(Settings.uncheckedChunks <= 0 ? "Render distance" : Settings.uncheckedChunks + " chunks"));
+		}
+
+		@Override
+		protected void applyValue() {
+			int rd = Unchecked.renderDistance();
+			int n = (int) Math.round(value * Math.max(1, rd - 1)) + 1;
+			Settings.uncheckedChunks = n >= rd ? 0 : n;
+		}
 	}
 
 	@Override
@@ -184,9 +254,12 @@ public class SettingsScreen extends Screen {
 		g.enableScissor(0, viewTop(), width, viewBottom());
 		for (Label l : labels) g.drawString(font, l.text(), l.x(), l.y() - off, l.color());
 
-		int sx = boxX + BOX_W + 6, sy = colorY - off;
-		g.fill(sx, sy, sx + 20, sy + 20, 0xFFFFFFFF);
-		g.fill(sx + 1, sy + 1, sx + 19, sy + 19, 0xFF000000 | Settings.markColor);
+		int sx = boxX + BOX_W + 6;
+		for (Swatch s : swatches) {
+			int sy = s.y() - off;
+			g.fill(sx, sy, sx + 20, sy + 20, 0xFFFFFFFF);
+			g.fill(sx + 1, sy + 1, sx + 19, sy + 19, 0xFF000000 | s.color().getAsInt());
+		}
 
 		for (Item it : items) {
 			it.widget().setY(it.y() - off);

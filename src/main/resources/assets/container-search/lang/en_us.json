@@ -1,4 +1,5 @@
 {
   "key.container-search.open": "Open Container Search",
+  "key.container-search.toggle_unchecked": "Toggle unchecked containers",
   "key.categories.container-search": "Container Search"
 }

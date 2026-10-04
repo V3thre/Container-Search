@@ -1,6 +1,7 @@
 package veth.containersearch.client;
 
 import com.mojang.blaze3d.vertex.PoseStack;
+import com.mojang.blaze3d.vertex.VertexConsumer;
 import net.fabricmc.fabric.api.client.rendering.v1.WorldRenderContext;
 import net.fabricmc.fabric.api.client.rendering.v1.WorldRenderEvents;
 import net.minecraft.client.Minecraft;
@@ -9,6 +10,8 @@ import net.minecraft.client.renderer.ShapeRenderer;
 import net.minecraft.core.BlockPos;
 import net.minecraft.world.phys.AABB;
 import net.minecraft.world.phys.Vec3;
+
+import java.util.List;
 
 public class Marking {
 	static BlockPos target;
@@ -37,26 +40,35 @@ public class Marking {
 			if (t > hold) alpha = 1f - (t - hold) / (float) FADE_MS;
 		}
 
+		draw(ctx, List.of(target), Settings.markColor, alpha, Settings.markType);
+	}
+
+	static void draw(WorldRenderContext ctx, List<BlockPos> blocks, int color, float alpha, Settings.MarkType type) {
 		Vec3 cam = ctx.camera().getPosition();
 		PoseStack ps = ctx.matrixStack();
 		MultiBufferSource.BufferSource buf = (MultiBufferSource.BufferSource) ctx.consumers();
+		float r = (color >> 16 & 255) / 255f;
+		float gr = (color >> 8 & 255) / 255f;
+		float b = (color & 255) / 255f;
 
 		ps.pushPose();
 		ps.translate(-cam.x, -cam.y, -cam.z);
-		AABB box = new AABB(target);
-		float r = (Settings.markColor >> 16 & 255) / 255f;
-		float gr = (Settings.markColor >> 8 & 255) / 255f;
-		float b = (Settings.markColor & 255) / 255f;
 
-		if (Settings.markType != Settings.MarkType.OUTLINE) {
-			ShapeRenderer.addChainedFilledBoxVertices(ps, buf.getBuffer(MarkingRenderType.FILL_THROUGH_WALLS),
-					box.minX, box.minY, box.minZ, box.maxX, box.maxY, box.maxZ, r, gr, b, 0.3f * alpha);
+		if (type != Settings.MarkType.OUTLINE) {
+			VertexConsumer fill = buf.getBuffer(MarkingRenderType.FILL_THROUGH_WALLS);
+			for (BlockPos p : blocks) {
+				AABB box = new AABB(p);
+				ShapeRenderer.addChainedFilledBoxVertices(ps, fill,
+						box.minX, box.minY, box.minZ, box.maxX, box.maxY, box.maxZ, r, gr, b, 0.3f * alpha);
+			}
 			buf.endBatch(MarkingRenderType.FILL_THROUGH_WALLS);
 		}
-		if (Settings.markType != Settings.MarkType.FILL) {
-			ShapeRenderer.renderLineBox(ps, buf.getBuffer(MarkingRenderType.LINES_THROUGH_WALLS), box, r, gr, b, alpha);
+		if (type != Settings.MarkType.FILL) {
+			VertexConsumer lines = buf.getBuffer(MarkingRenderType.LINES_THROUGH_WALLS);
+			for (BlockPos p : blocks) ShapeRenderer.renderLineBox(ps, lines, new AABB(p), r, gr, b, alpha);
 			buf.endBatch(MarkingRenderType.LINES_THROUGH_WALLS);
 		}
+
 		ps.popPose();
 	}
 }

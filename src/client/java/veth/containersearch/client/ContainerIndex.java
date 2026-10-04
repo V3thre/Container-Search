@@ -12,6 +12,10 @@ import net.minecraft.client.Minecraft;
 import net.minecraft.core.BlockPos;
 import net.minecraft.resources.RegistryOps;
 import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.level.Level;
+import net.minecraft.world.level.block.ChestBlock;
+import net.minecraft.world.level.block.state.BlockState;
+import net.minecraft.world.level.block.state.properties.ChestType;
 import veth.containersearch.ContainerSearch;
 
 import java.io.IOException;
@@ -198,6 +202,17 @@ public class ContainerIndex {
 
     static List<Hit> search(String text) {
         return List.of();
+    }
+
+    static boolean isChecked(String dim, BlockPos pos, Level level) {
+        Map<String, Entry> inDim = data.get(dim);
+        if (inDim == null) return false;
+        BlockState state = level.getBlockState(pos);
+        if (state.getBlock() instanceof ChestBlock && state.getValue(ChestBlock.TYPE) != ChestType.SINGLE) {
+            BlockPos other = pos.relative(ChestBlock.getConnectedDirection(state));
+            if (other.compareTo(pos) < 0) pos = other;
+        }
+        return inDim.containsKey(pos.getX() + "," + pos.getY() + "," + pos.getZ());
     }
 
     static final int INFINITE = -1;

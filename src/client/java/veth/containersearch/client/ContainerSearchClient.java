@@ -58,6 +58,7 @@ public class ContainerSearchClient implements ClientModInitializer {
 			Marking.clear();
 		});
 		Marking.register();
+		Unchecked.register();
 		Settings.load();
 
 		//autosave
@@ -108,8 +109,8 @@ public class ContainerSearchClient implements ClientModInitializer {
 							if (otherHalf.compareTo(pos) < 0) { BlockPos t = pos; pos = otherHalf; otherHalf = t; }
 						}
 						ContainerIndex.record(lastDim.toString(), pos, items);
-						if (pos.equals(Marking.target)) Marking.clear();   // you reached it, drop the outline
-						if (otherHalf != null) ContainerIndex.remove(lastDim.toString(), otherHalf);   // also clears old duplicates
+						if (pos.equals(Marking.target)) Marking.clear();
+						if (otherHalf != null) ContainerIndex.remove(lastDim.toString(), otherHalf);
 						lastPos = null;
 				});
 			}
