@@ -107,12 +107,21 @@ public class ContainerIndex {
         return List.of();
     }
 
-    static List<ItemStack> allItems() {
+    static final int INFINITE = -1;
+
+    static List<ItemStack> allItems(String playerDim, int chunkX, int chunkZ, int range) {
         List<ItemStack> out = new ArrayList<>();
-        for (var dim : data.values()) {
-            for (var chest : dim.values()) {
-                if (chest.stacks() == null) continue;
-                for (JsonElement el : chest.stacks()) {
+        for (var dim : data.entrySet()) {
+            if (range != INFINITE && !dim.getKey().equals(playerDim)) continue;
+            for (var chest : dim.getValue().entrySet()) {
+                if (chest.getValue().stacks() == null) continue;
+                if (range != INFINITE) {
+                    String[] p = chest.getKey().split(",");
+                    int dx = Math.abs((Integer.parseInt(p[0]) >> 4) - chunkX);
+                    int dz = Math.abs((Integer.parseInt(p[2]) >> 4) - chunkZ);
+                    if (Math.max(dx, dz) > range) continue;
+                }
+                for (JsonElement el : chest.getValue().stacks()) {
                     ItemStack stack = ItemStack.OPTIONAL_CODEC.parse(ops(), el).result().orElse(ItemStack.EMPTY);
                     if (!stack.isEmpty()) out.add(stack);
                 }
