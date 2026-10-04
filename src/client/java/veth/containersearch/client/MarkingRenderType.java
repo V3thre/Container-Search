@@ -12,6 +12,21 @@ public class MarkingRenderType extends RenderType {
 		super(name, format, mode, bufferSize, affectsCrumbling, sortOnUpload, setup, clear);
 	}
 
+	public static final RenderType FILL_THROUGH_WALLS = create(
+			"container_search_fill",
+			DefaultVertexFormat.POSITION_COLOR,
+			VertexFormat.Mode.TRIANGLE_STRIP,
+			1536,
+			false,
+			true,
+			CompositeState.builder()
+					.setShaderState(POSITION_COLOR_SHADER)
+					.setTransparencyState(TRANSLUCENT_TRANSPARENCY)
+					.setWriteMaskState(COLOR_WRITE)
+					.setDepthTestState(NO_DEPTH_TEST)
+					.setCullState(NO_CULL)
+					.createCompositeState(false));
+
 	public static final RenderType LINES_THROUGH_WALLS = create(
 			"container_search_lines",
 			DefaultVertexFormat.POSITION_COLOR_NORMAL,
