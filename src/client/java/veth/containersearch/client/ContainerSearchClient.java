@@ -10,7 +10,6 @@ import net.minecraft.client.KeyMapping;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.screens.inventory.AbstractContainerScreen;
 import net.minecraft.core.BlockPos;
-import net.minecraft.resources.ResourceLocation;
 import net.minecraft.world.InteractionResult;
 import net.minecraft.world.entity.player.Inventory;
 import net.minecraft.world.inventory.AbstractContainerMenu;
@@ -20,21 +19,28 @@ import net.minecraft.world.inventory.HopperMenu;
 import net.minecraft.world.inventory.ShulkerBoxMenu;
 import net.minecraft.world.inventory.Slot;
 import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.level.Level;
 import net.minecraft.world.level.block.ChestBlock;
+import net.minecraft.world.level.block.entity.BlockEntity;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.level.block.state.properties.ChestType;
 import net.minecraft.world.level.storage.LevelResource;
+import net.minecraft.world.phys.BlockHitResult;
+import net.minecraft.world.phys.HitResult;
 import org.lwjgl.glfw.GLFW;
-import veth.containersearch.ContainerSearch;
 
 import java.util.ArrayList;
 import java.util.List;
 
 
 public class ContainerSearchClient implements ClientModInitializer {
-	private static BlockPos lastPos;
-	private static ResourceLocation lastDim;
-	private static int autosaveTicks;
+	private static BlockPos lastPos;	private static int autosaveTicks;
+
+	private static boolean isContainerAt(Level level, BlockPos pos) {
+		BlockEntity be = level.getBlockEntity(pos);
+		return be != null && Unchecked.isContainer(be);
+	}
+
 	@Override
 	public void onInitializeClient() {
 		ClientPlayConnectionEvents.JOIN.register((handler, sender, minecraft) -> {
@@ -48,8 +54,6 @@ public class ContainerSearchClient implements ClientModInitializer {
 				worldKey = "unknown";
 			}
 			worldKey = worldKey.replaceAll("[^A-Za-z0-9._-]", "_");
-
-			ContainerSearch.LOGGER.info("JOIN key={} multiplayer={}", worldKey, client.getCurrentServer() != null);
 			ContainerIndex.load(worldKey);
 		});
 
@@ -77,14 +81,21 @@ public class ContainerSearchClient implements ClientModInitializer {
 		});
 
 		UseBlockCallback.EVENT.register((player, level, hand, hit) -> {
-			lastPos = hit.getBlockPos();
-			lastDim = level.dimension().location();
-			ContainerSearch.LOGGER.info("CLICK {} in {}", lastPos, lastDim);
+			lastPos = hit.getBlockPos().immutable();
 			return InteractionResult.PASS;
 		});
 
 		ScreenEvents.AFTER_INIT.register((client, screen, scaledWidth, scaledHeight) -> {
 			if (screen instanceof AbstractContainerScreen<?> cs ) {
+					var level = client.level;
+					BlockPos opened = null;
+					if (level != null) {
+						if (client.hitResult instanceof BlockHitResult bhr && bhr.getType() == HitResult.Type.BLOCK
+								&& isContainerAt(level, bhr.getBlockPos())) opened = bhr.getBlockPos().immutable();
+						else if (lastPos != null && isContainerAt(level, lastPos)) opened = lastPos;
+					}
+					final BlockPos openedPos = opened;
+					final String openedDim = level == null ? null : level.dimension().location().toString();
 
 				ScreenEvents.remove(screen).register(screen1 -> {
 					//screen closed
@@ -92,7 +103,7 @@ public class ContainerSearchClient implements ClientModInitializer {
 						//no non container "container" screens
 						boolean isContainer = menu instanceof ChestMenu || menu instanceof ShulkerBoxMenu
 								|| menu instanceof HopperMenu || menu instanceof DispenserMenu;
-						if (lastPos == null || !isContainer) return;
+						if (openedPos == null || !isContainer || client.level == null) return;
 					List<ItemStack> items = new ArrayList<>();
 					for (Slot slot : cs.getMenu().slots) {
 						if (slot.container instanceof Inventory) continue;
@@ -100,17 +111,16 @@ public class ContainerSearchClient implements ClientModInitializer {
 						if (st.isEmpty()) continue;
 						items.add(st.copy());
 					}
-					ContainerSearch.LOGGER.info("CLOSED container at {} stacks={}", lastPos, items.size());
-					//store a double chest as the lower position
-						BlockPos pos = lastPos, otherHalf = null;
+						//store a double chest as the lower position
+						BlockPos pos = openedPos, otherHalf = null;
 						BlockState state = Minecraft.getInstance().level.getBlockState(pos);
 						if (state.getBlock() instanceof ChestBlock && state.getValue(ChestBlock.TYPE) != ChestType.SINGLE) {
 							otherHalf = pos.relative(ChestBlock.getConnectedDirection(state));
 							if (otherHalf.compareTo(pos) < 0) { BlockPos t = pos; pos = otherHalf; otherHalf = t; }
 						}
-						ContainerIndex.record(lastDim.toString(), pos, items);
+						ContainerIndex.record(openedDim, pos, items);
 						if (pos.equals(Marking.target)) Marking.clear();
-						if (otherHalf != null) ContainerIndex.remove(lastDim.toString(), otherHalf);
+						if (otherHalf != null) ContainerIndex.remove(openedDim, otherHalf);
 						lastPos = null;
 				});
 			}

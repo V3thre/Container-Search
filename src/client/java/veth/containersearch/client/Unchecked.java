@@ -89,7 +89,7 @@ public class Unchecked {
 				&& mc.level.getBlockState(pos).getBlock() instanceof ChestBlock && hp.distManhattan(pos) == 1;
 	}
 
-	private static boolean isContainer(BlockEntity be) {
+	static boolean isContainer(BlockEntity be) {
 		return be instanceof ChestBlockEntity || be instanceof BarrelBlockEntity || be instanceof ShulkerBoxBlockEntity
 				|| be instanceof HopperBlockEntity || be instanceof DispenserBlockEntity;
 	}

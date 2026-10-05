@@ -188,9 +188,7 @@ public class ContainerIndex {
         Map<String, Entry> inDim = data.computeIfAbsent(dim, d -> new HashMap<>());
         inDim.put(key, new Entry(encoded, System.currentTimeMillis()));
         rebuild();
-        dirty = true;
-        ContainerSearch.LOGGER.info("RECORD {} -> {} stacks (dirty)", key, encoded.size());
-    }
+        dirty = true;    }
     static void remove(String dim, BlockPos pos) {
         Map<String, Entry> inDim = data.get(dim);
         if (inDim == null) return;
