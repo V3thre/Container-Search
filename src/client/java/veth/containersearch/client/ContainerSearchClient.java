@@ -35,6 +35,7 @@ import java.util.List;
 
 public class ContainerSearchClient implements ClientModInitializer {
 	private static BlockPos lastPos;	private static int autosaveTicks;
+	private static int pruneTicks;
 
 	private static boolean isContainerAt(Level level, BlockPos pos) {
 		BlockEntity be = level.getBlockEntity(pos);
@@ -64,6 +65,11 @@ public class ContainerSearchClient implements ClientModInitializer {
 		Marking.register();
 		Unchecked.register();
 		Settings.load();
+
+		//forget containers that are no longer there (destroyed)
+		ClientTickEvents.END_CLIENT_TICK.register(client -> {
+			if (client.level != null && ++pruneTicks % 20 == 0) ContainerIndex.prune(client.level);
+		});
 
 		//autosave
 		ClientTickEvents.END_CLIENT_TICK.register(client -> {

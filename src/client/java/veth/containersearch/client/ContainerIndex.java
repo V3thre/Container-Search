@@ -14,6 +14,7 @@ import net.minecraft.resources.RegistryOps;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.level.block.ChestBlock;
+import net.minecraft.world.level.block.entity.BlockEntity;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.level.block.state.properties.ChestType;
 import veth.containersearch.ContainerSearch;
@@ -182,13 +183,18 @@ public class ContainerIndex {
     static void record(String dim, BlockPos pos, List<ItemStack> stacks) {
         String key = pos.getX() + "," + pos.getY() + "," + pos.getZ();
         List<JsonElement> encoded = new ArrayList<>();
-        for (ItemStack st : stacks) {
-            ItemStack.OPTIONAL_CODEC.encodeStart(ops(), st).result().ifPresent(encoded::add);
+        for (ItemStack st : merge(stacks)) {
+            int total = st.getCount();
+            ItemStack.OPTIONAL_CODEC.encodeStart(ops(), st.copyWithCount(1)).result().ifPresent(el -> {
+                if (el.isJsonObject()) el.getAsJsonObject().addProperty("count", total);
+                encoded.add(el);
+            });
         }
         Map<String, Entry> inDim = data.computeIfAbsent(dim, d -> new HashMap<>());
         inDim.put(key, new Entry(encoded, System.currentTimeMillis()));
         rebuild();
-        dirty = true;    }
+        dirty = true;
+    }
     static void remove(String dim, BlockPos pos) {
         Map<String, Entry> inDim = data.get(dim);
         if (inDim == null) return;
@@ -196,6 +202,55 @@ public class ContainerIndex {
             rebuild();
             dirty = true;
         }
+    }
+
+    private static List<ItemStack> merge(List<ItemStack> in) {
+        List<ItemStack> out = new ArrayList<>();
+        outer:
+        for (ItemStack st : in) {
+            for (ItemStack m : out) {
+                if (ItemStack.isSameItemSameComponents(m, st)) { m.grow(st.getCount()); continue outer; }
+            }
+            out.add(st.copy());
+        }
+        return out;
+    }
+
+    private static ItemStack decode(JsonElement el) {
+        if (!el.isJsonObject()) return ItemStack.EMPTY;
+        JsonObject o = el.getAsJsonObject().deepCopy();
+        int count = o.has("count") ? o.get("count").getAsInt() : 1;
+        o.addProperty("count", 1);
+        ItemStack stack = ItemStack.OPTIONAL_CODEC.parse(ops(), o).result().orElse(ItemStack.EMPTY);
+        if (!stack.isEmpty()) stack.setCount(count);
+        return stack;
+    }
+
+    private static void mergeInto(List<Found> out, Found f) {
+        for (int i = out.size() - 1; i >= 0; i--) {
+            Found e = out.get(i);
+            if (!e.pos().equals(f.pos()) || !e.dim().equals(f.dim())) break;
+            if (ItemStack.isSameItemSameComponents(e.stack(), f.stack())) { e.stack().grow(f.stack().getCount()); return; }
+        }
+        out.add(f);
+    }
+
+    //deletes entries if the container is destroyed
+    static void prune(Level level) {
+        Map<String, Entry> inDim = data.get(level.dimension().location().toString());
+        if (inDim == null || inDim.isEmpty()) return;
+        List<String> gone = new ArrayList<>();
+        for (String key : inDim.keySet()) {
+            String[] p = key.split(",");
+            BlockPos pos = new BlockPos(Integer.parseInt(p[0]), Integer.parseInt(p[1]), Integer.parseInt(p[2]));
+            if (!level.hasChunkAt(pos)) continue;   // not loaded, so we can't tell: leave it
+            BlockEntity be = level.getBlockEntity(pos);
+            if (be == null || !Unchecked.isContainer(be)) gone.add(key);
+        }
+        if (gone.isEmpty()) return;
+        for (String key : gone) inDim.remove(key);
+        rebuild();
+        dirty = true;
     }
 
     static List<Hit> search(String text) {
@@ -231,8 +286,8 @@ public class ContainerIndex {
                     if (Math.max(dx, dz) > range) continue;
                 }
                 for (JsonElement el : chest.getValue().stacks()) {
-                    ItemStack stack = ItemStack.OPTIONAL_CODEC.parse(ops(), el).result().orElse(ItemStack.EMPTY);
-                    if (!stack.isEmpty()) out.add(new Found(stack, dim.getKey(), pos));
+                    ItemStack stack = decode(el);
+                    if (!stack.isEmpty()) mergeInto(out, new Found(stack, dim.getKey(), pos));
                 }
             }
         }
