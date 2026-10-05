@@ -10,7 +10,10 @@ import net.minecraft.client.gui.components.EditBox;
 import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.commands.arguments.EntityAnchorArgument;
 import net.minecraft.core.BlockPos;
+import net.minecraft.core.component.DataComponents;
 import net.minecraft.core.registries.BuiltInRegistries;
+import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.item.component.ItemContainerContents;
 import net.minecraft.world.phys.Vec3;
 import net.minecraft.network.chat.Component;
 
@@ -51,6 +54,18 @@ public class SearchScreen extends Screen {
 		setInitialFocus(search);
 	}
 
+	private static boolean matches(ItemStack st, String q) {
+		if (st.getHoverName().getString().toLowerCase(Locale.ROOT).contains(q)
+				|| BuiltInRegistries.ITEM.getKey(st.getItem()).getPath().contains(q.replace(' ', '_'))) return true;
+		ItemContainerContents contents = st.get(DataComponents.CONTAINER);
+		if (contents != null) {
+			for (ItemStack inner : contents.nonEmptyItems()) {
+				if (matches(inner, q)) return true;
+			}
+		}
+		return false;
+	}
+
 	private void refresh() {
 		Minecraft mc = Minecraft.getInstance();
 		BlockPos p = mc.player.blockPosition();
@@ -62,8 +77,7 @@ public class SearchScreen extends Screen {
 				: Double.MAX_VALUE));
 		String q = query.trim().toLowerCase(Locale.ROOT);
 		if (!q.isEmpty()) {
-			stacks.removeIf(f -> !f.stack().getHoverName().getString().toLowerCase(Locale.ROOT).contains(q)
-					&& !BuiltInRegistries.ITEM.getKey(f.stack().getItem()).getPath().contains(q.replace(' ', '_')));
+			stacks.removeIf(f -> !matches(f.stack(), q));
 		}
 		scroll = Math.min(scroll, maxScroll());
 	}
