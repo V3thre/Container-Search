@@ -96,6 +96,11 @@ public class SettingsScreen extends Screen {
 		y += ROW;
 		y = colorRow("Color (hex)", Settings.markColor, v -> Settings.markColor = v, () -> Settings.markColor, y);
 		y = numberRow("Fade out (seconds, 0 = never)", Settings.fadeSeconds, v -> Settings.fadeSeconds = v, y);
+		labels.add(new Label("Auto look at container", left, y + 6, WHITE));
+		add(CycleButton.onOffBuilder(Settings.autoLook)
+				.displayOnlyValue()
+				.create(boxX, y, BOX_W, 20, Component.empty(), (btn, v) -> Settings.autoLook = v));
+		y += ROW;
 
 		y = header("Unchecked containers", y);
 		labels.add(new Label("Show unchecked", left, y + 6, WHITE));

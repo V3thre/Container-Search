@@ -26,12 +26,13 @@ public class Settings {
 	static int uncheckedColor = 0xFF0000;
 	static int uncheckedChunks = 0;
 	static MarkType uncheckedType = MarkType.OUTLINE;
+	static boolean autoLook = true;   // clicking an item turns you to face its container
 
 	private static final Gson GSON = new GsonBuilder().setPrettyPrinting().create();
 	private static final Path FILE = FabricLoader.getInstance().getConfigDir().resolve("container-search.json");
 
 	private record Data(int minChunks, int maxChunks, MarkType markType, int markColor, int fadeSeconds, int autosaveSeconds,
-						Boolean showUnchecked, Integer uncheckedColor, Integer uncheckedChunks, MarkType uncheckedType) {}
+						Boolean showUnchecked, Integer uncheckedColor, Integer uncheckedChunks, MarkType uncheckedType, Boolean autoLook) {}
 
 	static void load() {
 		if (!Files.exists(FILE)) return;
@@ -48,6 +49,7 @@ public class Settings {
 			if (d.uncheckedColor() != null) uncheckedColor = d.uncheckedColor();
 			if (d.uncheckedChunks() != null) uncheckedChunks = d.uncheckedChunks();
 			if (d.uncheckedType() != null) uncheckedType = d.uncheckedType();
+			if (d.autoLook() != null) autoLook = d.autoLook();
 			normalize();
 		} catch (Exception e) {
 			ContainerSearch.LOGGER.error("Failed to load {}", FILE, e);
@@ -58,7 +60,7 @@ public class Settings {
 		normalize();
 		try {
 			Files.writeString(FILE, GSON.toJson(new Data(minChunks, maxChunks, markType, markColor, fadeSeconds, autosaveSeconds,
-					showUnchecked, uncheckedColor, uncheckedChunks, uncheckedType)));
+					showUnchecked, uncheckedColor, uncheckedChunks, uncheckedType, autoLook)));
 		} catch (IOException e) {
 			ContainerSearch.LOGGER.error("Failed to save {}", FILE, e);
 		}

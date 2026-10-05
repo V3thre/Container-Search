@@ -98,7 +98,7 @@ public class SearchScreen extends Screen {
 				Minecraft mc = Minecraft.getInstance();
 				if (f.dim().equals(mc.level.dimension().location().toString())) {
 					Marking.set(f.dim(), f.pos());
-					mc.player.lookAt(EntityAnchorArgument.Anchor.EYES, Vec3.atCenterOf(f.pos()));
+					if (Settings.autoLook) mc.player.lookAt(EntityAnchorArgument.Anchor.EYES, Vec3.atCenterOf(f.pos()));
 					onClose();
 				}
 				return true;
