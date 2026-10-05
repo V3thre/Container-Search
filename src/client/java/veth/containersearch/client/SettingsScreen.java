@@ -35,6 +35,8 @@ public class SettingsScreen extends Screen {
 	private boolean draggingBar;
 	private Button done;
 	private Button keyButton;
+	private Button resetButton;
+	private boolean confirmReset;
 	private boolean listening;
 	private String status = "";
 
@@ -58,6 +60,7 @@ public class SettingsScreen extends Screen {
 		labels.clear();
 		items.clear();
 		swatches.clear();
+		confirmReset = false;
 		left = width / 2 - 155;
 		boxX = width / 2 + 55;
 		int y = SearchScreen.BAR + 10;
@@ -132,6 +135,22 @@ public class SettingsScreen extends Screen {
 		labels.add(new Label("Delete latest backup", left, y + 6, WHITE));
 		add(Button.builder(Component.literal("Deletes latest"),
 						b -> status = ContainerIndex.deleteLatest() ? "Deleted latest backup." : "No backup to delete.")
+				.bounds(boxX, y, BOX_W, 20).build());
+		y += ROW;
+		labels.add(new Label("Reset index", left, y + 6, WHITE));
+		resetButton = add(Button.builder(Component.literal("Reset index"), b -> {
+					if (!confirmReset) {
+						confirmReset = true;
+						resetButton.setMessage(Component.literal("Click to confirm"));
+						status = "This clears this world's index. Click again to confirm.";
+					} else {
+						confirmReset = false;
+						resetButton.setMessage(Component.literal("Reset index"));
+						ContainerIndex.backup();
+						status = ContainerIndex.reset() ? "Index reset (a backup was saved first)." : "Nothing to reset.";
+						Marking.clear();
+					}
+				})
 				.bounds(boxX, y, BOX_W, 20).build());
 		contentBottom = y + 20;
 

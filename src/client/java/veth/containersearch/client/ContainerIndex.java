@@ -253,6 +253,16 @@ public class ContainerIndex {
         dirty = true;
     }
 
+    //resets world index
+    static boolean reset() {
+        if (file == null) return false;
+        data = new HashMap<>();
+        rebuild();
+        dirty = true;
+        save();
+        return true;
+    }
+
     static List<Hit> search(String text) {
         return List.of();
     }

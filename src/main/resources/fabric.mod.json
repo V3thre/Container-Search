@@ -9,7 +9,8 @@
 	],
 	"contact": {
 		"homepage": "https://fabricmc.net/",
-		"sources": "https://github.com/V3thre/Container-Search"
+		"sources": "https://github.com/V3thre/Container-Search",
+		"issues": "https://github.com/V3thre/Container-Search/issues"
 	},
 	"license": "CC0-1.0",
 	"icon": "assets/container-search/icon.png",
@@ -20,6 +21,9 @@
 		],
 		"client": [
 			"veth.containersearch.client.ContainerSearchClient"
+		],
+		"modmenu": [
+			"veth.containersearch.client.ModMenuIntegration"
 		]
 	},
 	"mixins": [
@@ -34,5 +38,8 @@
 		"minecraft": "~1.21.4",
 		"java": ">=21",
 		"fabric-api": "*"
+	},
+	"suggests": {
+		"modmenu": "*"
 	}
 }
