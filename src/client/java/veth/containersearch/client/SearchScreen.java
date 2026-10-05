@@ -6,15 +6,18 @@ import net.minecraft.client.gui.Font;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.client.gui.components.AbstractSliderButton;
 import net.minecraft.client.gui.components.Button;
+import net.minecraft.client.gui.components.EditBox;
 import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.commands.arguments.EntityAnchorArgument;
 import net.minecraft.core.BlockPos;
+import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.world.phys.Vec3;
 import net.minecraft.network.chat.Component;
 
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
+import java.util.Locale;
 
 public class SearchScreen extends Screen {
 	private static final int CELL = 18, MARGIN = 10;
@@ -24,6 +27,7 @@ public class SearchScreen extends Screen {
 
 	private List<ContainerIndex.Found> stacks = List.of();
 	private double scroll = 0;
+	private String query = "";
 
 	public SearchScreen() {
 		super(Component.literal("Container Search"));
@@ -36,6 +40,15 @@ public class SearchScreen extends Screen {
 		addRenderableWidget(new RangeSlider(width / 2 - 100, height - BAR + 2, 200, 20));
 		addRenderableWidget(Button.builder(Component.literal("Settings"), b -> minecraft.setScreen(new SettingsScreen(this)))
 				.bounds(width - 74, 2, 70, 20).build());
+
+		//search bar
+		int boxW = Math.max(60, Math.min(170, width / 2 - 70 - MARGIN));
+		EditBox search = new EditBox(font, MARGIN, 2, boxW, 20, Component.literal("Search"));
+		search.setHint(Component.literal("Search items..."));
+		search.setValue(query);
+		search.setResponder(s -> { query = s; scroll = 0; refresh(); });
+		addRenderableWidget(search);
+		setInitialFocus(search);
 	}
 
 	private void refresh() {
@@ -47,6 +60,11 @@ public class SearchScreen extends Screen {
 		stacks.sort(Comparator.comparingDouble(f -> f.dim().equals(dim)
 				? mc.player.distanceToSqr(f.pos().getX() + 0.5, f.pos().getY() + 0.5, f.pos().getZ() + 0.5)
 				: Double.MAX_VALUE));
+		String q = query.trim().toLowerCase(Locale.ROOT);
+		if (!q.isEmpty()) {
+			stacks.removeIf(f -> !f.stack().getHoverName().getString().toLowerCase(Locale.ROOT).contains(q)
+					&& !BuiltInRegistries.ITEM.getKey(f.stack().getItem()).getPath().contains(q.replace(' ', '_')));
+		}
 		scroll = Math.min(scroll, maxScroll());
 	}
 
