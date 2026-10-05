@@ -10,12 +10,12 @@ import com.mojang.blaze3d.vertex.VertexFormat;
 import net.fabricmc.fabric.api.client.rendering.v1.WorldRenderContext;
 import net.fabricmc.fabric.api.client.rendering.v1.WorldRenderEvents;
 import net.minecraft.client.Minecraft;
-import net.minecraft.client.renderer.FogParameters;
+import net.minecraft.client.renderer.LevelRenderer;
 import net.minecraft.client.renderer.RenderType;
-import net.minecraft.client.renderer.ShapeRenderer;
 import net.minecraft.core.BlockPos;
 import net.minecraft.world.phys.AABB;
 import net.minecraft.world.phys.Vec3;
+import org.joml.Matrix4f;
 import org.joml.Matrix4fStack;
 
 import java.util.List;
@@ -26,6 +26,14 @@ public class Marking {
 
 	static long start;
 	private static final long FADE_MS = 1000;
+
+	private static final int[][] FACES = {
+			{0, 0, 0, 1, 0, 0, 1, 0, 1, 0, 0, 1},
+			{0, 1, 0, 0, 1, 1, 1, 1, 1, 1, 1, 0},
+			{0, 0, 0, 0, 1, 0, 1, 1, 0, 1, 0, 0},
+			{0, 0, 1, 1, 0, 1, 1, 1, 1, 0, 1, 1},
+			{0, 0, 0, 0, 0, 1, 0, 1, 1, 0, 1, 0},
+			{1, 0, 0, 1, 1, 0, 1, 1, 1, 1, 0, 1}};
 
 	static void set(String d, BlockPos pos) { dim = d; target = pos; start = System.currentTimeMillis(); }
 	static void clear() { target = null; }
@@ -64,8 +72,11 @@ public class Marking {
 		Matrix4fStack mv = RenderSystem.getModelViewStack();
 		mv.pushMatrix();
 		mv.identity();
-		FogParameters oldFog = RenderSystem.getShaderFog();
-		RenderSystem.setShaderFog(FogParameters.NO_FOG);
+		RenderSystem.applyModelViewMatrix();
+		float oldFogStart = RenderSystem.getShaderFogStart();
+		float oldFogEnd = RenderSystem.getShaderFogEnd();
+		RenderSystem.setShaderFogStart(1.0E9f);
+		RenderSystem.setShaderFogEnd(2.0E9f);
 		float[] oldColor = RenderSystem.getShaderColor().clone();
 		RenderSystem.setShaderColor(1f, 1f, 1f, 1f);
 
@@ -73,25 +84,34 @@ public class Marking {
 		ps.mulPose(ctx.positionMatrix());
 
 		if (type != Settings.MarkType.OUTLINE) {
-			BufferBuilder fill = Tesselator.getInstance().begin(VertexFormat.Mode.TRIANGLE_STRIP, DefaultVertexFormat.POSITION_COLOR);
+			BufferBuilder fill = Tesselator.getInstance().begin(VertexFormat.Mode.QUADS, DefaultVertexFormat.POSITION_COLOR);
+			Matrix4f pose = ps.last().pose();
 			for (BlockPos p : blocks) {
 				AABB box = new AABB(p).move(-cam.x, -cam.y, -cam.z);
-				ShapeRenderer.addChainedFilledBoxVertices(ps, fill,
-						box.minX, box.minY, box.minZ, box.maxX, box.maxY, box.maxZ, r, gr, b, 0.3f * alpha);
+				float[] lo = {(float) box.minX, (float) box.minY, (float) box.minZ};
+				float[] hi = {(float) box.maxX, (float) box.maxY, (float) box.maxZ};
+				for (int[] face : FACES) {
+					for (int i = 0; i < 12; i += 3) {
+						fill.addVertex(pose, (face[i] == 0 ? lo : hi)[0], (face[i + 1] == 0 ? lo : hi)[1], (face[i + 2] == 0 ? lo : hi)[2])
+								.setColor(r, gr, b, 0.3f * alpha);
+					}
+				}
 			}
 			flush(MarkingRenderType.FILL_THROUGH_WALLS, fill);
 		}
 		if (type != Settings.MarkType.FILL) {
 			BufferBuilder lines = Tesselator.getInstance().begin(VertexFormat.Mode.LINES, DefaultVertexFormat.POSITION_COLOR_NORMAL);
 			for (BlockPos p : blocks) {
-				ShapeRenderer.renderLineBox(ps, lines, new AABB(p).move(-cam.x, -cam.y, -cam.z), r, gr, b, alpha);
+				LevelRenderer.renderLineBox(ps, lines, new AABB(p).move(-cam.x, -cam.y, -cam.z), r, gr, b, alpha);
 			}
 			flush(MarkingRenderType.LINES_THROUGH_WALLS, lines);
 		}
 
 		RenderSystem.setShaderColor(oldColor[0], oldColor[1], oldColor[2], oldColor[3]);
-		RenderSystem.setShaderFog(oldFog);
+		RenderSystem.setShaderFogStart(oldFogStart);
+		RenderSystem.setShaderFogEnd(oldFogEnd);
 		mv.popMatrix();
+		RenderSystem.applyModelViewMatrix();
 	}
 
 	private static void flush(RenderType type, BufferBuilder builder) {
