@@ -1,46 +1,34 @@
 package veth.containersearch.client;
 
-import com.mojang.blaze3d.vertex.DefaultVertexFormat;
-import com.mojang.blaze3d.vertex.VertexFormat;
-import net.minecraft.client.renderer.RenderType;
+import com.mojang.blaze3d.pipeline.DepthStencilState;
+import com.mojang.blaze3d.pipeline.RenderPipeline;
+import com.mojang.blaze3d.platform.CompareOp;
+import net.minecraft.client.renderer.RenderPipelines;
+import net.minecraft.client.renderer.rendertype.RenderSetup;
+import net.minecraft.client.renderer.rendertype.RenderType;
+import veth.containersearch.ContainerSearch;
 
-import java.util.OptionalDouble;
+public class MarkingRenderType {
+	private static final DepthStencilState ALWAYS = new DepthStencilState(CompareOp.ALWAYS_PASS, false);
 
-public class MarkingRenderType extends RenderType {
-	private MarkingRenderType(String name, VertexFormat format, VertexFormat.Mode mode, int bufferSize,
-							  boolean affectsCrumbling, boolean sortOnUpload, Runnable setup, Runnable clear) {
-		super(name, format, mode, bufferSize, affectsCrumbling, sortOnUpload, setup, clear);
-	}
+	private static final RenderPipeline LINES_PIPELINE = RenderPipelines.register(
+			RenderPipeline.builder(RenderPipelines.LINES_SNIPPET)
+					.withLocation(ContainerSearch.id("pipeline/lines_through_walls"))
+					.withDepthStencilState(ALWAYS)
+					.build());
 
-	public static final RenderType FILL_THROUGH_WALLS = create(
-			"container_search_fill",
-			DefaultVertexFormat.POSITION_COLOR,
-			VertexFormat.Mode.TRIANGLE_STRIP,
-			1536,
-			false,
-			true,
-			CompositeState.builder()
-					.setShaderState(POSITION_COLOR_SHADER)
-					.setTransparencyState(TRANSLUCENT_TRANSPARENCY)
-					.setWriteMaskState(COLOR_WRITE)
-					.setDepthTestState(NO_DEPTH_TEST)
-					.setCullState(NO_CULL)
-					.createCompositeState(false));
+	private static final RenderPipeline FILL_PIPELINE = RenderPipelines.register(
+			RenderPipeline.builder(RenderPipelines.DEBUG_FILLED_SNIPPET)
+					.withLocation(ContainerSearch.id("pipeline/fill_through_walls"))
+					.withDepthStencilState(ALWAYS)
+					.withCull(false)
+					.build());
 
-	public static final RenderType LINES_THROUGH_WALLS = create(
-			"container_search_lines",
-			DefaultVertexFormat.POSITION_COLOR_NORMAL,
-			VertexFormat.Mode.LINES,
-			1536,
-			false,
-			false,
-			CompositeState.builder()
-					.setShaderState(RENDERTYPE_LINES_SHADER)
-					.setLineState(new LineStateShard(OptionalDouble.of(2.0)))
-					.setLayeringState(VIEW_OFFSET_Z_LAYERING)
-					.setTransparencyState(TRANSLUCENT_TRANSPARENCY)
-					.setWriteMaskState(COLOR_DEPTH_WRITE)
-					.setDepthTestState(NO_DEPTH_TEST)
-					.setCullState(NO_CULL)
-					.createCompositeState(false));
+	public static final RenderType LINES_THROUGH_WALLS =
+			RenderType.create("container_search_lines", RenderSetup.builder(LINES_PIPELINE).createRenderSetup());
+
+	public static final RenderType FILL_THROUGH_WALLS =
+			RenderType.create("container_search_fill", RenderSetup.builder(FILL_PIPELINE).createRenderSetup());
+
+	static void init() {}
 }

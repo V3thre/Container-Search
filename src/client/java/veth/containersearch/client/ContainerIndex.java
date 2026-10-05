@@ -7,7 +7,7 @@ import com.google.gson.JsonObject;
 import com.google.gson.reflect.TypeToken;
 import com.mojang.serialization.JsonOps;
 import net.fabricmc.loader.api.FabricLoader;
-import net.minecraft.Util;
+import net.minecraft.util.Util;
 import net.minecraft.client.Minecraft;
 import net.minecraft.core.BlockPos;
 import net.minecraft.resources.RegistryOps;
@@ -237,7 +237,7 @@ public class ContainerIndex {
 
     //deletes entries if the container is destroyed
     static void prune(Level level) {
-        Map<String, Entry> inDim = data.get(level.dimension().location().toString());
+        Map<String, Entry> inDim = data.get(level.dimension().identifier().toString());
         if (inDim == null || inDim.isEmpty()) return;
         List<String> gone = new ArrayList<>();
         for (String key : inDim.keySet()) {

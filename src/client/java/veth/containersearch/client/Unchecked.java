@@ -2,9 +2,9 @@ package veth.containersearch.client;
 
 import com.mojang.blaze3d.platform.InputConstants;
 import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientTickEvents;
-import net.fabricmc.fabric.api.client.keybinding.v1.KeyBindingHelper;
-import net.fabricmc.fabric.api.client.rendering.v1.WorldRenderContext;
-import net.fabricmc.fabric.api.client.rendering.v1.WorldRenderEvents;
+import net.fabricmc.fabric.api.client.keymapping.v1.KeyMappingHelper;
+import net.fabricmc.fabric.api.client.rendering.v1.level.LevelRenderContext;
+import net.fabricmc.fabric.api.client.rendering.v1.level.LevelRenderEvents;
 import net.minecraft.client.KeyMapping;
 import net.minecraft.client.Minecraft;
 import net.minecraft.core.BlockPos;
@@ -38,10 +38,10 @@ public class Unchecked {
 	private static final int UNDERGROUND_DEPTH = 8;
 
 	static void register() {
-		toggleKey = KeyBindingHelper.registerKeyBinding(new KeyMapping(
-				"key.container-search.toggle_unchecked", InputConstants.UNKNOWN.getValue(), "key.categories.container-search"));
+		toggleKey = KeyMappingHelper.registerKeyMapping(new KeyMapping(
+				"key.container-search.toggle_unchecked", InputConstants.UNKNOWN.getValue(), ContainerSearchClient.CATEGORY));
 		ClientTickEvents.END_CLIENT_TICK.register(Unchecked::tick);
-		WorldRenderEvents.LAST.register(Unchecked::render);
+		LevelRenderEvents.END_MAIN.register(Unchecked::render);
 	}
 
 	static int renderDistance() {
@@ -58,7 +58,7 @@ public class Unchecked {
 			Settings.showUnchecked = !Settings.showUnchecked;
 			Settings.save();
 			if (mc.player != null) {
-				mc.player.displayClientMessage(Component.literal("Unchecked containers: " + (Settings.showUnchecked ? "ON" : "OFF")), true);
+				mc.player.sendOverlayMessage(Component.literal("Unchecked containers: " + (Settings.showUnchecked ? "ON" : "OFF")));
 			}
 		}
 		if (mc.level == null || mc.player == null || !Settings.showUnchecked) {
@@ -79,7 +79,7 @@ public class Unchecked {
 	}
 
 	private static boolean canSee(Minecraft mc, BlockPos pos) {
-		Vec3 from = mc.gameRenderer.getMainCamera().getPosition();
+		Vec3 from = mc.gameRenderer.getMainCamera().position();
 		BlockHitResult hit = mc.level.clip(new ClipContext(from, Vec3.atCenterOf(pos),
 				ClipContext.Block.COLLIDER, ClipContext.Fluid.NONE, mc.player));
 		if (hit.getType() == HitResult.Type.MISS) return true;
@@ -95,7 +95,7 @@ public class Unchecked {
 	}
 
 	private static void rescan(Minecraft mc) {
-		String dim = mc.level.dimension().location().toString();
+		String dim = mc.level.dimension().identifier().toString();
 		BlockPos p = mc.player.blockPosition();
 		int pcx = p.getX() >> 4, pcz = p.getZ() >> 4, r = effectiveChunks();
 
@@ -116,7 +116,7 @@ public class Unchecked {
 		cache = out;
 	}
 
-	private static void render(WorldRenderContext ctx) {
+	private static void render(LevelRenderContext ctx) {
 		if (!Settings.showUnchecked || shown.isEmpty()) return;
 		Marking.draw(ctx, shown, Settings.uncheckedColor, 1f, Settings.uncheckedType);
 	}

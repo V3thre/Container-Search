@@ -2,7 +2,7 @@ package veth.containersearch.client;
 
 import net.fabricmc.api.ClientModInitializer;
 import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientTickEvents;
-import net.fabricmc.fabric.api.client.keybinding.v1.KeyBindingHelper;
+import net.fabricmc.fabric.api.client.keymapping.v1.KeyMappingHelper;
 import net.fabricmc.fabric.api.client.networking.v1.ClientPlayConnectionEvents;
 import net.fabricmc.fabric.api.client.screen.v1.ScreenEvents;
 import net.fabricmc.fabric.api.event.player.UseBlockCallback;
@@ -28,13 +28,15 @@ import net.minecraft.world.level.storage.LevelResource;
 import net.minecraft.world.phys.BlockHitResult;
 import net.minecraft.world.phys.HitResult;
 import org.lwjgl.glfw.GLFW;
+import veth.containersearch.ContainerSearch;
 
 import java.util.ArrayList;
 import java.util.List;
 
 
 public class ContainerSearchClient implements ClientModInitializer {
-	private static BlockPos lastPos;	private static int autosaveTicks;
+	private static BlockPos lastPos;	static final KeyMapping.Category CATEGORY = KeyMapping.Category.register(ContainerSearch.id("main"));
+	private static int autosaveTicks;
 	private static int pruneTicks;
 
 	private static boolean isContainerAt(Level level, BlockPos pos) {
@@ -80,8 +82,8 @@ public class ContainerSearchClient implements ClientModInitializer {
 			}
 		});
 
-		KeyMapping openKey = KeyBindingHelper.registerKeyBinding(
-				new KeyMapping("key.container-search.open", GLFW.GLFW_KEY_G, "key.categories.container-search"));
+		KeyMapping openKey = KeyMappingHelper.registerKeyMapping(
+				new KeyMapping("key.container-search.open", GLFW.GLFW_KEY_G, CATEGORY));
 		ClientTickEvents.END_CLIENT_TICK.register(client -> {
 			while (openKey.consumeClick()) client.setScreen(new SearchScreen());
 		});
@@ -101,7 +103,7 @@ public class ContainerSearchClient implements ClientModInitializer {
 						else if (lastPos != null && isContainerAt(level, lastPos)) opened = lastPos;
 					}
 					final BlockPos openedPos = opened;
-					final String openedDim = level == null ? null : level.dimension().location().toString();
+					final String openedDim = level == null ? null : level.dimension().identifier().toString();
 
 				ScreenEvents.remove(screen).register(screen1 -> {
 					//screen closed
