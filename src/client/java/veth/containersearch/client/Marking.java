@@ -1,22 +1,13 @@
 package veth.containersearch.client;
 
-import com.mojang.blaze3d.systems.RenderSystem;
-import com.mojang.blaze3d.vertex.BufferBuilder;
-import com.mojang.blaze3d.vertex.DefaultVertexFormat;
-import com.mojang.blaze3d.vertex.MeshData;
 import com.mojang.blaze3d.vertex.PoseStack;
-import com.mojang.blaze3d.vertex.Tesselator;
-import com.mojang.blaze3d.vertex.VertexFormat;
-import net.fabricmc.fabric.api.client.rendering.v1.WorldRenderContext;
-import net.fabricmc.fabric.api.client.rendering.v1.WorldRenderEvents;
+import com.mojang.blaze3d.vertex.VertexConsumer;
+import net.fabricmc.fabric.api.client.rendering.v1.level.LevelRenderContext;
+import net.fabricmc.fabric.api.client.rendering.v1.level.LevelRenderEvents;
 import net.minecraft.client.Minecraft;
-import net.minecraft.client.renderer.FogParameters;
-import net.minecraft.client.renderer.RenderType;
-import net.minecraft.client.renderer.ShapeRenderer;
 import net.minecraft.core.BlockPos;
-import net.minecraft.world.phys.AABB;
 import net.minecraft.world.phys.Vec3;
-import org.joml.Matrix4fStack;
+import net.minecraft.world.phys.shapes.Shapes;
 
 import java.util.List;
 
@@ -31,13 +22,14 @@ public class Marking {
 	static void clear() { target = null; }
 
 	static void register() {
-		WorldRenderEvents.LAST.register(Marking::render);
+		MarkingRenderType.init();
+		LevelRenderEvents.COLLECT_SUBMITS.register(Marking::render);
 	}
 
-	private static void render(WorldRenderContext ctx) {
+	private static void render(LevelRenderContext ctx) {
 		Minecraft mc = Minecraft.getInstance();
 		if (target == null || mc.level == null) return;
-		if (!dim.equals(mc.level.dimension().location().toString())) return;
+		if (!dim.equals(mc.level.dimension().identifier().toString())) return;
 		if (!mc.level.hasChunkAt(target)) return;
 
 		float alpha = 1f;
@@ -55,47 +47,36 @@ public class Marking {
 	 * many of which were found while testing, which is why it uses its own PoseStack and buffer, an explicit model-view
 	 * matrix, no fog and a neutral shader color.
 	 */
-	static void draw(WorldRenderContext ctx, List<BlockPos> blocks, int color, float alpha, Settings.MarkType type) {
-		Vec3 cam = ctx.camera().getPosition();
-		float r = (color >> 16 & 255) / 255f;
-		float gr = (color >> 8 & 255) / 255f;
-		float b = (color & 255) / 255f;
-
-		Matrix4fStack mv = RenderSystem.getModelViewStack();
-		mv.pushMatrix();
-		mv.identity();
-		FogParameters oldFog = RenderSystem.getShaderFog();
-		RenderSystem.setShaderFog(FogParameters.NO_FOG);
-		float[] oldColor = RenderSystem.getShaderColor().clone();
-		RenderSystem.setShaderColor(1f, 1f, 1f, 1f);
+	static void draw(LevelRenderContext ctx, List<BlockPos> blocks, int color, float alpha, Settings.MarkType type) {
+		Vec3 cam = ctx.levelState().cameraRenderState.pos;
+		int argb = ((int) (alpha * 255f) << 24) | (color & 0xFFFFFF);
+		int fillArgb = ((int) (alpha * 0.3f * 255f) << 24) | (color & 0xFFFFFF);
 
 		PoseStack ps = new PoseStack();
-		ps.mulPose(ctx.positionMatrix());
-
-		if (type != Settings.MarkType.OUTLINE) {
-			BufferBuilder fill = Tesselator.getInstance().begin(VertexFormat.Mode.TRIANGLE_STRIP, DefaultVertexFormat.POSITION_COLOR);
-			for (BlockPos p : blocks) {
-				AABB box = new AABB(p).move(-cam.x, -cam.y, -cam.z);
-				ShapeRenderer.addChainedFilledBoxVertices(ps, fill,
-						box.minX, box.minY, box.minZ, box.maxX, box.maxY, box.maxZ, r, gr, b, 0.3f * alpha);
+		for (BlockPos p : blocks) {
+			ps.pushPose();
+			ps.translate(p.getX() - cam.x, p.getY() - cam.y, p.getZ() - cam.z);
+			if (type != Settings.MarkType.OUTLINE) {
+				ctx.submitNodeCollector().submitCustomGeometry(ps, MarkingRenderType.FILL_THROUGH_WALLS, (pose, buffer) -> fillBox(buffer, pose, fillArgb));
 			}
-			flush(MarkingRenderType.FILL_THROUGH_WALLS, fill);
-		}
-		if (type != Settings.MarkType.FILL) {
-			BufferBuilder lines = Tesselator.getInstance().begin(VertexFormat.Mode.LINES, DefaultVertexFormat.POSITION_COLOR_NORMAL);
-			for (BlockPos p : blocks) {
-				ShapeRenderer.renderLineBox(ps, lines, new AABB(p).move(-cam.x, -cam.y, -cam.z), r, gr, b, alpha);
+			if (type != Settings.MarkType.FILL) {
+				ctx.submitNodeCollector().submitShapeOutline(ps, Shapes.block(), MarkingRenderType.LINES_THROUGH_WALLS, argb, 2.0f, true);
 			}
-			flush(MarkingRenderType.LINES_THROUGH_WALLS, lines);
+			ps.popPose();
 		}
-
-		RenderSystem.setShaderColor(oldColor[0], oldColor[1], oldColor[2], oldColor[3]);
-		RenderSystem.setShaderFog(oldFog);
-		mv.popMatrix();
 	}
 
-	private static void flush(RenderType type, BufferBuilder builder) {
-		MeshData mesh = builder.build();
-		if (mesh != null) type.draw(mesh);
+	private static void fillBox(VertexConsumer b, PoseStack.Pose pose, int argb) {
+		float x0 = 0f, y0 = 0f, z0 = 0f, x1 = 1f, y1 = 1f, z1 = 1f;
+		quad(b, pose, argb, x0, y0, z0, x1, y0, z0, x1, y0, z1, x0, y0, z1);
+		quad(b, pose, argb, x0, y1, z0, x0, y1, z1, x1, y1, z1, x1, y1, z0);
+		quad(b, pose, argb, x0, y0, z0, x0, y1, z0, x1, y1, z0, x1, y0, z0);
+		quad(b, pose, argb, x0, y0, z1, x1, y0, z1, x1, y1, z1, x0, y1, z1);
+		quad(b, pose, argb, x0, y0, z0, x0, y0, z1, x0, y1, z1, x0, y1, z0);
+		quad(b, pose, argb, x1, y0, z0, x1, y1, z0, x1, y1, z1, x1, y0, z1);
+	}
+
+	private static void quad(VertexConsumer b, PoseStack.Pose pose, int argb, float... v) {
+		for (int i = 0; i < 12; i += 3) b.addVertex(pose, v[i], v[i + 1], v[i + 2]).setColor(argb);
 	}
 }
