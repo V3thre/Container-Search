@@ -3,20 +3,18 @@ package veth.containersearch.client;
 import com.mojang.blaze3d.systems.RenderSystem;
 import com.mojang.blaze3d.vertex.BufferBuilder;
 import com.mojang.blaze3d.vertex.DefaultVertexFormat;
-import com.mojang.blaze3d.vertex.MeshData;
 import com.mojang.blaze3d.vertex.PoseStack;
 import com.mojang.blaze3d.vertex.Tesselator;
 import com.mojang.blaze3d.vertex.VertexFormat;
+import com.mojang.blaze3d.vertex.VertexSorting;
 import net.fabricmc.fabric.api.client.rendering.v1.WorldRenderContext;
 import net.fabricmc.fabric.api.client.rendering.v1.WorldRenderEvents;
 import net.minecraft.client.Minecraft;
-import net.minecraft.client.renderer.FogParameters;
+import net.minecraft.client.renderer.LevelRenderer;
 import net.minecraft.client.renderer.RenderType;
-import net.minecraft.client.renderer.ShapeRenderer;
 import net.minecraft.core.BlockPos;
 import net.minecraft.world.phys.AABB;
 import net.minecraft.world.phys.Vec3;
-import org.joml.Matrix4fStack;
 
 import java.util.List;
 
@@ -61,41 +59,51 @@ public class Marking {
 		float gr = (color >> 8 & 255) / 255f;
 		float b = (color & 255) / 255f;
 
-		Matrix4fStack mv = RenderSystem.getModelViewStack();
-		mv.pushMatrix();
-		mv.identity();
-		FogParameters oldFog = RenderSystem.getShaderFog();
-		RenderSystem.setShaderFog(FogParameters.NO_FOG);
+		PoseStack mv = RenderSystem.getModelViewStack();
+		mv.pushPose();
+		mv.setIdentity();
+		RenderSystem.applyModelViewMatrix();
+		float oldFogStart = RenderSystem.getShaderFogStart();
+		float oldFogEnd = RenderSystem.getShaderFogEnd();
+		RenderSystem.setShaderFogStart(1.0E9f);
+		RenderSystem.setShaderFogEnd(2.0E9f);
 		float[] oldColor = RenderSystem.getShaderColor().clone();
 		RenderSystem.setShaderColor(1f, 1f, 1f, 1f);
 
 		PoseStack ps = new PoseStack();
-		ps.mulPose(ctx.positionMatrix());
+		ps.mulPoseMatrix(ctx.matrixStack().last().pose());
 
 		if (type != Settings.MarkType.OUTLINE) {
-			BufferBuilder fill = Tesselator.getInstance().begin(VertexFormat.Mode.TRIANGLE_STRIP, DefaultVertexFormat.POSITION_COLOR);
+			BufferBuilder fill = begin(VertexFormat.Mode.TRIANGLE_STRIP, DefaultVertexFormat.POSITION_COLOR);
 			for (BlockPos p : blocks) {
 				AABB box = new AABB(p).move(-cam.x, -cam.y, -cam.z);
-				ShapeRenderer.addChainedFilledBoxVertices(ps, fill,
+				LevelRenderer.addChainedFilledBoxVertices(ps, fill,
 						box.minX, box.minY, box.minZ, box.maxX, box.maxY, box.maxZ, r, gr, b, 0.3f * alpha);
 			}
 			flush(MarkingRenderType.FILL_THROUGH_WALLS, fill);
 		}
 		if (type != Settings.MarkType.FILL) {
-			BufferBuilder lines = Tesselator.getInstance().begin(VertexFormat.Mode.LINES, DefaultVertexFormat.POSITION_COLOR_NORMAL);
+			BufferBuilder lines = begin(VertexFormat.Mode.LINES, DefaultVertexFormat.POSITION_COLOR_NORMAL);
 			for (BlockPos p : blocks) {
-				ShapeRenderer.renderLineBox(ps, lines, new AABB(p).move(-cam.x, -cam.y, -cam.z), r, gr, b, alpha);
+				LevelRenderer.renderLineBox(ps, lines, new AABB(p).move(-cam.x, -cam.y, -cam.z), r, gr, b, alpha);
 			}
 			flush(MarkingRenderType.LINES_THROUGH_WALLS, lines);
 		}
 
 		RenderSystem.setShaderColor(oldColor[0], oldColor[1], oldColor[2], oldColor[3]);
-		RenderSystem.setShaderFog(oldFog);
-		mv.popMatrix();
+		RenderSystem.setShaderFogStart(oldFogStart);
+		RenderSystem.setShaderFogEnd(oldFogEnd);
+		mv.popPose();
+		RenderSystem.applyModelViewMatrix();
+	}
+
+	private static BufferBuilder begin(VertexFormat.Mode mode, VertexFormat format) {
+		BufferBuilder builder = Tesselator.getInstance().getBuilder();
+		builder.begin(mode, format);
+		return builder;
 	}
 
 	private static void flush(RenderType type, BufferBuilder builder) {
-		MeshData mesh = builder.build();
-		if (mesh != null) type.draw(mesh);
+		type.end(builder, VertexSorting.DISTANCE_TO_ORIGIN);
 	}
 }

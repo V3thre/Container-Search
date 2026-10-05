@@ -231,7 +231,7 @@ public class SettingsScreen extends Screen {
 	}
 
 	@Override
-	public boolean mouseScrolled(double mouseX, double mouseY, double scrollX, double scrollY) {
+	public boolean mouseScrolled(double mouseX, double mouseY, double scrollY) {
 		scroll = Math.max(0, Math.min(maxScroll(), scroll - scrollY * ROW));
 		return true;
 	}
@@ -265,13 +265,14 @@ public class SettingsScreen extends Screen {
 	}
 
 	@Override
-	public void renderBackground(GuiGraphics g, int mouseX, int mouseY, float delta) {
-		super.renderBackground(g, mouseX, mouseY, delta);
+	public void renderBackground(GuiGraphics g) {
+		super.renderBackground(g);
 		SearchScreen.drawTitleBar(g, font, title, width);
 	}
 
 	@Override
 	public void render(GuiGraphics g, int mouseX, int mouseY, float delta) {
+		renderBackground(g);
 		super.render(g, mouseX, mouseY, delta);
 		int off = (int) scroll;
 

@@ -5,13 +5,16 @@ import com.google.gson.GsonBuilder;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 import com.google.gson.reflect.TypeToken;
-import com.mojang.serialization.JsonOps;
+import com.mojang.brigadier.exceptions.CommandSyntaxException;
 import net.fabricmc.loader.api.FabricLoader;
 import net.minecraft.Util;
-import net.minecraft.client.Minecraft;
 import net.minecraft.core.BlockPos;
-import net.minecraft.resources.RegistryOps;
+import net.minecraft.core.registries.BuiltInRegistries;
+import net.minecraft.nbt.TagParser;
+import net.minecraft.resources.ResourceLocation;
+import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.item.Items;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.level.block.ChestBlock;
 import net.minecraft.world.level.block.entity.BlockEntity;
@@ -67,7 +70,7 @@ public class ContainerIndex {
     private static final DateTimeFormatter STAMP = DateTimeFormatter.ofPattern("yyyy-MM-dd_HH-mm-ss");
 
     static boolean openConfigFolder() {
-        Util.getPlatform().openPath(FabricLoader.getInstance().getConfigDir());
+        Util.getPlatform().openFile(FabricLoader.getInstance().getConfigDir().toFile());
         return true;
     }
 
@@ -75,7 +78,7 @@ public class ContainerIndex {
         try {
             Path dir = FabricLoader.getInstance().getConfigDir().resolve("containersearch");
             Files.createDirectories(dir);
-            Util.getPlatform().openPath(dir);
+            Util.getPlatform().openFile(dir.toFile());
             return true;
         } catch (IOException e) {
             ContainerSearch.LOGGER.error("Could not open saves folder", e);
@@ -92,7 +95,7 @@ public class ContainerIndex {
         if (file == null) return false;
         try {
             Files.createDirectories(backupDir());
-            Util.getPlatform().openPath(backupDir());
+            Util.getPlatform().openFile(backupDir().toFile());
             return true;
         } catch (IOException e) {
             ContainerSearch.LOGGER.error("Could not open backup folder", e);
@@ -176,19 +179,19 @@ public class ContainerIndex {
             ContainerSearch.LOGGER.error("Failed to save {}", file, e);
         }
     }
-    private static RegistryOps<JsonElement> ops() {
-        return Minecraft.getInstance().level.registryAccess().createSerializationContext(JsonOps.INSTANCE);
+    private static JsonElement encode(ItemStack st) {
+        JsonObject o = new JsonObject();
+        o.addProperty("id", BuiltInRegistries.ITEM.getKey(st.getItem()).toString());
+        o.addProperty("count", st.getCount());
+        if (st.hasTag()) o.addProperty("tag", st.getTag().toString());
+        return o;
     }
 
     static void record(String dim, BlockPos pos, List<ItemStack> stacks) {
         String key = pos.getX() + "," + pos.getY() + "," + pos.getZ();
         List<JsonElement> encoded = new ArrayList<>();
         for (ItemStack st : merge(stacks)) {
-            int total = st.getCount();
-            ItemStack.OPTIONAL_CODEC.encodeStart(ops(), st.copyWithCount(1)).result().ifPresent(el -> {
-                if (el.isJsonObject()) el.getAsJsonObject().addProperty("count", total);
-                encoded.add(el);
-            });
+            encoded.add(encode(st));
         }
         Map<String, Entry> inDim = data.computeIfAbsent(dim, d -> new HashMap<>());
         inDim.put(key, new Entry(encoded, System.currentTimeMillis()));
@@ -209,7 +212,7 @@ public class ContainerIndex {
         outer:
         for (ItemStack st : in) {
             for (ItemStack m : out) {
-                if (ItemStack.isSameItemSameComponents(m, st)) { m.grow(st.getCount()); continue outer; }
+                if (ItemStack.isSameItemSameTags(m, st)) { m.grow(st.getCount()); continue outer; }
             }
             out.add(st.copy());
         }
@@ -218,11 +221,17 @@ public class ContainerIndex {
 
     private static ItemStack decode(JsonElement el) {
         if (!el.isJsonObject()) return ItemStack.EMPTY;
-        JsonObject o = el.getAsJsonObject().deepCopy();
-        int count = o.has("count") ? o.get("count").getAsInt() : 1;
-        o.addProperty("count", 1);
-        ItemStack stack = ItemStack.OPTIONAL_CODEC.parse(ops(), o).result().orElse(ItemStack.EMPTY);
-        if (!stack.isEmpty()) stack.setCount(count);
+        JsonObject o = el.getAsJsonObject();
+        Item item = BuiltInRegistries.ITEM.get(new ResourceLocation(o.get("id").getAsString()));
+        if (item == Items.AIR) return ItemStack.EMPTY;
+        ItemStack stack = new ItemStack(item, o.has("count") ? o.get("count").getAsInt() : 1);
+        if (o.has("tag")) {
+            try {
+                stack.setTag(TagParser.parseTag(o.get("tag").getAsString()));
+            } catch (CommandSyntaxException e) {
+                ContainerSearch.LOGGER.error("Bad item data in the index", e);
+            }
+        }
         return stack;
     }
 
@@ -230,7 +239,7 @@ public class ContainerIndex {
         for (int i = out.size() - 1; i >= 0; i--) {
             Found e = out.get(i);
             if (!e.pos().equals(f.pos()) || !e.dim().equals(f.dim())) break;
-            if (ItemStack.isSameItemSameComponents(e.stack(), f.stack())) { e.stack().grow(f.stack().getCount()); return; }
+            if (ItemStack.isSameItemSameTags(e.stack(), f.stack())) { e.stack().grow(f.stack().getCount()); return; }
         }
         out.add(f);
     }

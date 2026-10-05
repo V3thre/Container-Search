@@ -10,10 +10,12 @@ import net.minecraft.client.gui.components.EditBox;
 import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.commands.arguments.EntityAnchorArgument;
 import net.minecraft.core.BlockPos;
-import net.minecraft.core.component.DataComponents;
+import net.minecraft.core.NonNullList;
+import net.minecraft.nbt.CompoundTag;
+import net.minecraft.nbt.Tag;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.world.item.ItemStack;
-import net.minecraft.world.item.component.ItemContainerContents;
+import net.minecraft.world.ContainerHelper;
 import net.minecraft.world.phys.Vec3;
 import net.minecraft.network.chat.Component;
 
@@ -57,10 +59,12 @@ public class SearchScreen extends Screen {
 	private static boolean matches(ItemStack st, String q) {
 		if (st.getHoverName().getString().toLowerCase(Locale.ROOT).contains(q)
 				|| BuiltInRegistries.ITEM.getKey(st.getItem()).getPath().contains(q.replace(' ', '_'))) return true;
-		ItemContainerContents contents = st.get(DataComponents.CONTAINER);
-		if (contents != null) {
-			for (ItemStack inner : contents.nonEmptyItems()) {
-				if (matches(inner, q)) return true;
+		CompoundTag tag = st.getTagElement("BlockEntityTag");
+		if (tag != null && tag.contains("Items", Tag.TAG_LIST)) {
+			NonNullList<ItemStack> contents = NonNullList.withSize(27, ItemStack.EMPTY);
+			ContainerHelper.loadAllItems(tag, contents);
+			for (ItemStack inner : contents) {
+				if (!inner.isEmpty() && matches(inner, q)) return true;
 			}
 		}
 		return false;
@@ -94,7 +98,7 @@ public class SearchScreen extends Screen {
 	private int maxScroll() { return Math.max(0, rows() * CELL - (listBottom() - listTop())); }
 
 	@Override
-	public boolean mouseScrolled(double mouseX, double mouseY, double scrollX, double scrollY) {
+	public boolean mouseScrolled(double mouseX, double mouseY, double scrollY) {
 		scroll = Math.max(0, Math.min(maxScroll(), scroll - scrollY * CELL));
 		return true;
 	}
@@ -122,14 +126,15 @@ public class SearchScreen extends Screen {
 	}
 
 	@Override
-	public void renderBackground(GuiGraphics g, int mouseX, int mouseY, float delta) {
-		super.renderBackground(g, mouseX, mouseY, delta);
+	public void renderBackground(GuiGraphics g) {
+		super.renderBackground(g);
 		drawTitleBar(g, font, title, width);
 		g.fill(0, height - BAR, width, height, 0x47404040);
 	}
 
 	@Override
 	public void render(GuiGraphics g, int mouseX, int mouseY, float delta) {
+		renderBackground(g);
 		super.render(g, mouseX, mouseY, delta);
 		int cols = cols();
 		ContainerIndex.Found hovered = null;
