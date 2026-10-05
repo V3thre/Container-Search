@@ -3,11 +3,12 @@ package veth.containersearch.client;
 import net.minecraft.ChatFormatting;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.Font;
-import net.minecraft.client.gui.GuiGraphics;
+import net.minecraft.client.gui.GuiGraphicsExtractor;
 import net.minecraft.client.gui.components.AbstractSliderButton;
 import net.minecraft.client.gui.components.Button;
 import net.minecraft.client.gui.components.EditBox;
 import net.minecraft.client.gui.screens.Screen;
+import net.minecraft.client.input.MouseButtonEvent;
 import net.minecraft.commands.arguments.EntityAnchorArgument;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.component.DataComponents;
@@ -41,7 +42,7 @@ public class SearchScreen extends Screen {
 		if (range != ContainerIndex.INFINITE) range = Math.max(Settings.minChunks, Math.min(Settings.maxChunks, range));
 		refresh();
 		addRenderableWidget(new RangeSlider(width / 2 - 100, height - BAR + 2, 200, 20));
-		addRenderableWidget(Button.builder(Component.literal("Settings"), b -> minecraft.setScreen(new SettingsScreen(this)))
+		addRenderableWidget(Button.builder(Component.literal("Settings"), b -> minecraft.gui.setScreen(new SettingsScreen(this)))
 				.bounds(width - 74, 2, 70, 20).build());
 
 		//search bar
@@ -58,18 +59,13 @@ public class SearchScreen extends Screen {
 		if (st.getHoverName().getString().toLowerCase(Locale.ROOT).contains(q)
 				|| BuiltInRegistries.ITEM.getKey(st.getItem()).getPath().contains(q.replace(' ', '_'))) return true;
 		ItemContainerContents contents = st.get(DataComponents.CONTAINER);
-		if (contents != null) {
-			for (ItemStack inner : contents.nonEmptyItems()) {
-				if (matches(inner, q)) return true;
-			}
-		}
-		return false;
+		return contents != null && contents.nonEmptyItemCopyStream().anyMatch(inner -> matches(inner, q));
 	}
 
 	private void refresh() {
 		Minecraft mc = Minecraft.getInstance();
 		BlockPos p = mc.player.blockPosition();
-		String dim = mc.level.dimension().location().toString();
+		String dim = mc.level.dimension().identifier().toString();
 		stacks = new ArrayList<>(ContainerIndex.allItems(dim, p.getX() >> 4, p.getZ() >> 4, range));
 		//closets container first
 		stacks.sort(Comparator.comparingDouble(f -> f.dim().equals(dim)
@@ -82,9 +78,9 @@ public class SearchScreen extends Screen {
 		scroll = Math.min(scroll, maxScroll());
 	}
 
-	static void drawTitleBar(GuiGraphics g, Font font, Component title, int width) {
+	static void drawTitleBar(GuiGraphicsExtractor g, Font font, Component title, int width) {
 		g.fill(0, 0, width, BAR, 0x47404040);
-		g.drawCenteredString(font, title, width / 2, (BAR - font.lineHeight) / 2, 0xFFFFFFFF);
+		g.centeredText(font, title, width / 2, (BAR - font.lineHeight) / 2, 0xFFFFFFFF);
 	}
 
 	private int listTop() { return BAR; }
@@ -100,9 +96,10 @@ public class SearchScreen extends Screen {
 	}
 
 	@Override
-	public boolean mouseClicked(double mouseX, double mouseY, int button) {
-		if (super.mouseClicked(mouseX, mouseY, button)) return true;
-		if (button != 0 || mouseY < listTop() || mouseY >= listBottom()) return false;
+	public boolean mouseClicked(MouseButtonEvent event, boolean doubleClick) {
+		if (super.mouseClicked(event, doubleClick)) return true;
+		double mouseX = event.x(), mouseY = event.y();
+		if (event.button() != 0 || mouseY < listTop() || mouseY >= listBottom()) return false;
 		int cols = cols();
 		for (int i = 0; i < stacks.size(); i++) {
 			int x = MARGIN + (i % cols) * CELL;
@@ -110,7 +107,7 @@ public class SearchScreen extends Screen {
 			if (mouseX >= x && mouseX < x + CELL && mouseY >= y && mouseY < y + CELL) {
 				ContainerIndex.Found f = stacks.get(i);
 				Minecraft mc = Minecraft.getInstance();
-				if (f.dim().equals(mc.level.dimension().location().toString())) {
+				if (f.dim().equals(mc.level.dimension().identifier().toString())) {
 					Marking.set(f.dim(), f.pos());
 					if (Settings.autoLook) mc.player.lookAt(EntityAnchorArgument.Anchor.EYES, Vec3.atCenterOf(f.pos()));
 					onClose();
@@ -122,15 +119,15 @@ public class SearchScreen extends Screen {
 	}
 
 	@Override
-	public void renderBackground(GuiGraphics g, int mouseX, int mouseY, float delta) {
-		super.renderBackground(g, mouseX, mouseY, delta);
+	public void extractBackground(GuiGraphicsExtractor g, int mouseX, int mouseY, float delta) {
+		super.extractBackground(g, mouseX, mouseY, delta);
 		drawTitleBar(g, font, title, width);
 		g.fill(0, height - BAR, width, height, 0x47404040);
 	}
 
 	@Override
-	public void render(GuiGraphics g, int mouseX, int mouseY, float delta) {
-		super.render(g, mouseX, mouseY, delta);
+	public void extractRenderState(GuiGraphicsExtractor g, int mouseX, int mouseY, float delta) {
+		super.extractRenderState(g, mouseX, mouseY, delta);
 		int cols = cols();
 		ContainerIndex.Found hovered = null;
 
@@ -140,8 +137,8 @@ public class SearchScreen extends Screen {
 			int y = listTop() + (i / cols) * CELL - (int) scroll;
 			if (y + CELL < listTop() || y > listBottom()) continue;
 			ContainerIndex.Found f = stacks.get(i);
-			g.renderItem(f.stack(), x, y);
-			g.renderItemDecorations(font, f.stack(), x, y);
+			g.item(f.stack(), x, y);
+			g.itemDecorations(font, f.stack(), x, y);
 			if (mouseX >= x && mouseX < x + CELL && mouseY >= y && mouseY < y + CELL
 					&& mouseY >= listTop() && mouseY < listBottom()) {
 				hovered = f;
@@ -153,12 +150,12 @@ public class SearchScreen extends Screen {
 		if (hovered != null) renderFoundTooltip(g, hovered, mouseX, mouseY);
 	}
 
-	private void renderFoundTooltip(GuiGraphics g, ContainerIndex.Found f, int mouseX, int mouseY) {
+	private void renderFoundTooltip(GuiGraphicsExtractor g, ContainerIndex.Found f, int mouseX, int mouseY) {
 		Minecraft mc = Minecraft.getInstance();
 		List<Component> lines = new ArrayList<>(getTooltipFromItem(mc, f.stack()));
 
 		BlockPos p = f.pos();
-		if (f.dim().equals(mc.level.dimension().location().toString())) {
+		if (f.dim().equals(mc.level.dimension().identifier().toString())) {
 			double dist = Math.sqrt(mc.player.distanceToSqr(p.getX() + 0.5, p.getY() + 0.5, p.getZ() + 0.5));
 			lines.add(Component.literal(String.format("Distance: %.1f blocks", dist)).withStyle(ChatFormatting.GRAY));
 		} else {
@@ -166,7 +163,7 @@ public class SearchScreen extends Screen {
 		}
 		lines.add(Component.literal("Position: " + p.getX() + ", " + p.getY() + ", " + p.getZ()).withStyle(ChatFormatting.GRAY));
 
-		g.renderTooltip(font, lines, f.stack().getTooltipImage(), mouseX, mouseY);
+		g.setTooltipForNextFrame(font, lines, f.stack().getTooltipImage(), mouseX, mouseY);
 	}
 
 	private class RangeSlider extends AbstractSliderButton {

@@ -2,13 +2,15 @@ package veth.containersearch.client;
 
 import com.mojang.blaze3d.platform.InputConstants;
 import net.minecraft.client.KeyMapping;
-import net.minecraft.client.gui.GuiGraphics;
+import net.minecraft.client.gui.GuiGraphicsExtractor;
 import net.minecraft.client.gui.components.AbstractSliderButton;
 import net.minecraft.client.gui.components.AbstractWidget;
 import net.minecraft.client.gui.components.Button;
 import net.minecraft.client.gui.components.CycleButton;
 import net.minecraft.client.gui.components.EditBox;
 import net.minecraft.client.gui.screens.Screen;
+import net.minecraft.client.input.KeyEvent;
+import net.minecraft.client.input.MouseButtonEvent;
 import net.minecraft.network.chat.CommonComponents;
 import net.minecraft.network.chat.Component;
 import org.lwjgl.glfw.GLFW;
@@ -88,9 +90,8 @@ public class SettingsScreen extends Screen {
 
 		y = header("Marker", y);
 		labels.add(new Label("Fill type", left, y + 6, WHITE));
-		add(CycleButton.<Settings.MarkType>builder(t -> Component.literal(t.label))
+		add(CycleButton.<Settings.MarkType>builder(t -> Component.literal(t.label), Settings.markType)
 				.withValues(Settings.MarkType.values())
-				.withInitialValue(Settings.markType)
 				.displayOnlyValue()
 				.create(boxX, y, BOX_W, 20, Component.empty(), (btn, v) -> Settings.markType = v));
 		y += ROW;
@@ -109,9 +110,8 @@ public class SettingsScreen extends Screen {
 				.create(boxX, y, BOX_W, 20, Component.empty(), (btn, v) -> Settings.showUnchecked = v));
 		y += ROW;
 		labels.add(new Label("Fill type", left, y + 6, WHITE));
-		add(CycleButton.<Settings.MarkType>builder(t -> Component.literal(t.label))
+		add(CycleButton.<Settings.MarkType>builder(t -> Component.literal(t.label), Settings.uncheckedType)
 				.withValues(Settings.MarkType.values())
-				.withInitialValue(Settings.uncheckedType)
 				.displayOnlyValue()
 				.create(boxX, y, BOX_W, 20, Component.empty(), (btn, v) -> Settings.uncheckedType = v));
 		y += ROW;
@@ -174,9 +174,12 @@ public class SettingsScreen extends Screen {
 		labels.add(new Label(label, left, y + 6, WHITE));
 		EditBox box = new EditBox(font, boxX, y, BOX_W, 20, Component.literal(label));
 		box.setMaxLength(4);
-		box.setFilter(s -> s.matches("\\d*"));
 		box.setValue(String.valueOf(value));
-		box.setResponder(s -> { if (!s.isEmpty()) onChange.accept(Integer.parseInt(s)); });
+		box.setResponder(s -> {
+			String clean = s.replaceAll("[^0-9]", "");
+			if (!clean.equals(s)) { box.setValue(clean); return; }
+			if (!clean.isEmpty()) onChange.accept(Integer.parseInt(clean));
+		});
 		add(box);
 		return y + ROW;
 	}
@@ -186,9 +189,11 @@ public class SettingsScreen extends Screen {
 		swatches.add(new Swatch(y, current));
 		EditBox box = new EditBox(font, boxX, y, BOX_W, 20, Component.literal(label));
 		box.setMaxLength(6);
-		box.setFilter(s -> s.matches("[0-9a-fA-F]*"));
 		box.setValue(String.format("%06X", value));
-		box.setResponder(s -> { if (s.length() == 6) onChange.accept(Integer.parseInt(s, 16)); });
+		box.setResponder(s -> {
+			String clean = s.replaceAll("[^0-9a-fA-F]", "");			if (!clean.equals(s)) { box.setValue(clean); return; }
+			if (clean.length() == 6) onChange.accept(Integer.parseInt(clean, 16));
+		});
 		add(box);
 		return y + ROW;
 	}
@@ -198,9 +203,9 @@ public class SettingsScreen extends Screen {
 	}
 
 	@Override
-	public boolean keyPressed(int keyCode, int scanCode, int modifiers) {
+	public boolean keyPressed(KeyEvent event) {
 		if (listening) {
-			InputConstants.Key key = keyCode == GLFW.GLFW_KEY_ESCAPE ? InputConstants.UNKNOWN : InputConstants.getKey(keyCode, scanCode);
+			InputConstants.Key key = event.key() == GLFW.GLFW_KEY_ESCAPE ? InputConstants.UNKNOWN : InputConstants.getKey(event);
 			Unchecked.toggleKey.setKey(key);
 			KeyMapping.resetMapping();
 			minecraft.options.save();
@@ -208,7 +213,7 @@ public class SettingsScreen extends Screen {
 			keyButton.setMessage(keyLabel());
 			return true;
 		}
-		return super.keyPressed(keyCode, scanCode, modifiers);
+		return super.keyPressed(event);
 	}
 
 	private class UncheckedRangeSlider extends AbstractSliderButton {
@@ -242,41 +247,42 @@ public class SettingsScreen extends Screen {
 	}
 
 	@Override
-	public boolean mouseClicked(double mouseX, double mouseY, int button) {
-		if (button == 0 && maxScroll() > 0 && mouseX >= width - 10 && mouseY >= viewTop() && mouseY < viewBottom()) {
+	public boolean mouseClicked(MouseButtonEvent event, boolean doubleClick) {
+		double mouseX = event.x(), mouseY = event.y();
+		if (event.button() == 0 && maxScroll() > 0 && mouseX >= width - 10 && mouseY >= viewTop() && mouseY < viewBottom()) {
 			draggingBar = true;
 			dragTo(mouseY);
 			return true;
 		}
-		if (mouseY >= viewTop() && mouseY < viewBottom()) return super.mouseClicked(mouseX, mouseY, button);
-		return done.mouseClicked(mouseX, mouseY, button);
+		if (mouseY >= viewTop() && mouseY < viewBottom()) return super.mouseClicked(event, doubleClick);
+		return done.mouseClicked(event, doubleClick);
 	}
 
 	@Override
-	public boolean mouseDragged(double mouseX, double mouseY, int button, double dx, double dy) {
-		if (draggingBar) { dragTo(mouseY); return true; }
-		return super.mouseDragged(mouseX, mouseY, button, dx, dy);
+	public boolean mouseDragged(MouseButtonEvent event, double dx, double dy) {
+		if (draggingBar) { dragTo(event.y()); return true; }
+		return super.mouseDragged(event, dx, dy);
 	}
 
 	@Override
-	public boolean mouseReleased(double mouseX, double mouseY, int button) {
+	public boolean mouseReleased(MouseButtonEvent event) {
 		draggingBar = false;
-		return super.mouseReleased(mouseX, mouseY, button);
+		return super.mouseReleased(event);
 	}
 
 	@Override
-	public void renderBackground(GuiGraphics g, int mouseX, int mouseY, float delta) {
-		super.renderBackground(g, mouseX, mouseY, delta);
+	public void extractBackground(GuiGraphicsExtractor g, int mouseX, int mouseY, float delta) {
+		super.extractBackground(g, mouseX, mouseY, delta);
 		SearchScreen.drawTitleBar(g, font, title, width);
 	}
 
 	@Override
-	public void render(GuiGraphics g, int mouseX, int mouseY, float delta) {
-		super.render(g, mouseX, mouseY, delta);
+	public void extractRenderState(GuiGraphicsExtractor g, int mouseX, int mouseY, float delta) {
+		super.extractRenderState(g, mouseX, mouseY, delta);
 		int off = (int) scroll;
 
 		g.enableScissor(0, viewTop(), width, viewBottom());
-		for (Label l : labels) g.drawString(font, l.text(), l.x(), l.y() - off, l.color());
+		for (Label l : labels) g.text(font, l.text(), l.x(), l.y() - off, l.color());
 
 		int sx = boxX + BOX_W + 6;
 		for (Swatch s : swatches) {
@@ -287,11 +293,11 @@ public class SettingsScreen extends Screen {
 
 		for (Item it : items) {
 			it.widget().setY(it.y() - off);
-			it.widget().render(g, mouseX, mouseY, delta);
+			it.widget().extractRenderState(g, mouseX, mouseY, delta);
 		}
 		g.disableScissor();
 
-		g.drawCenteredString(font, status, width / 2, height - 42, 0xFFAAAAAA);
+		g.centeredText(font, status, width / 2, height - 42, 0xFFAAAAAA);
 
 		if (maxScroll() > 0) {
 			int viewH = viewBottom() - viewTop();
@@ -305,6 +311,6 @@ public class SettingsScreen extends Screen {
 	@Override
 	public void onClose() {
 		Settings.save();
-		minecraft.setScreen(parent);
+		minecraft.gui.setScreen(parent);
 	}
 }

@@ -27,7 +27,6 @@ public class Settings {
 	static int uncheckedChunks = 0;
 	static MarkType uncheckedType = MarkType.OUTLINE;
 	static boolean autoLook = true;   // clicking an item turns you to face its container
-
 	private static final Gson GSON = new GsonBuilder().setPrettyPrinting().create();
 	private static final Path FILE = FabricLoader.getInstance().getConfigDir().resolve("container-search.json");
 
