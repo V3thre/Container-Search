@@ -6,10 +6,18 @@ import net.fabricmc.fabric.api.client.rendering.v1.level.LevelRenderContext;
 import net.fabricmc.fabric.api.client.rendering.v1.level.LevelRenderEvents;
 import net.minecraft.client.Minecraft;
 import net.minecraft.core.BlockPos;
+import net.minecraft.world.level.Level;
+import net.minecraft.world.level.block.ChestBlock;
+import net.minecraft.world.level.block.state.BlockState;
+import net.minecraft.world.level.block.state.properties.ChestType;
+import net.minecraft.world.phys.AABB;
 import net.minecraft.world.phys.Vec3;
 import net.minecraft.world.phys.shapes.Shapes;
 
+import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Set;
 
 public class Marking {
 	static BlockPos target;
@@ -53,21 +61,40 @@ public class Marking {
 		int fillArgb = ((int) (alpha * 0.3f * 255f) << 24) | (color & 0xFFFFFF);
 
 		PoseStack ps = new PoseStack();
-		for (BlockPos p : blocks) {
+		for (AABB box : boxes(blocks)) {
 			ps.pushPose();
-			ps.translate(p.getX() - cam.x, p.getY() - cam.y, p.getZ() - cam.z);
+			ps.translate(box.minX - cam.x, box.minY - cam.y, box.minZ - cam.z);
+			float dx = (float) box.getXsize(), dy = (float) box.getYsize(), dz = (float) box.getZsize();
 			if (type != Settings.MarkType.OUTLINE) {
-				ctx.submitNodeCollector().submitCustomGeometry(ps, MarkingRenderType.FILL_THROUGH_WALLS, (pose, buffer) -> fillBox(buffer, pose, fillArgb));
+				ctx.submitNodeCollector().submitCustomGeometry(ps, MarkingRenderType.FILL_THROUGH_WALLS, (pose, buffer) -> fillBox(buffer, pose, fillArgb, dx, dy, dz));
 			}
 			if (type != Settings.MarkType.FILL) {
-				ctx.submitNodeCollector().submitShapeOutline(ps, Shapes.block(), MarkingRenderType.LINES_THROUGH_WALLS, argb, 2.0f, true);
+				ctx.submitNodeCollector().submitShapeOutline(ps, Shapes.create(0, 0, 0, dx, dy, dz), MarkingRenderType.LINES_THROUGH_WALLS, argb, 2.0f, true);
 			}
 			ps.popPose();
 		}
 	}
 
-	private static void fillBox(VertexConsumer b, PoseStack.Pose pose, int argb) {
-		float x0 = 0f, y0 = 0f, z0 = 0f, x1 = 1f, y1 = 1f, z1 = 1f;
+	private static List<AABB> boxes(List<BlockPos> blocks) {
+		Level level = Minecraft.getInstance().level;
+		Set<BlockPos> done = new HashSet<>();
+		List<AABB> out = new ArrayList<>();
+		for (BlockPos p : blocks) {
+			if (!done.add(p)) continue;
+			AABB box = new AABB(p);
+			BlockState s = level.getBlockState(p);
+			if (s.getBlock() instanceof ChestBlock && s.getValue(ChestBlock.TYPE) != ChestType.SINGLE) {
+				BlockPos other = p.relative(ChestBlock.getConnectedDirection(s));
+				done.add(other);
+				box = box.minmax(new AABB(other));
+			}
+			out.add(box);
+		}
+		return out;
+	}
+
+	private static void fillBox(VertexConsumer b, PoseStack.Pose pose, int argb, float dx, float dy, float dz) {
+		float x0 = 0f, y0 = 0f, z0 = 0f, x1 = dx, y1 = dy, z1 = dz;
 		quad(b, pose, argb, x0, y0, z0, x1, y0, z0, x1, y0, z1, x0, y0, z1);
 		quad(b, pose, argb, x0, y1, z0, x0, y1, z1, x1, y1, z1, x1, y1, z0);
 		quad(b, pose, argb, x0, y0, z0, x0, y1, z0, x1, y1, z0, x1, y0, z0);
