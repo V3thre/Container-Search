@@ -12,11 +12,19 @@ import net.minecraft.client.renderer.ShapeRenderer;
 import net.minecraft.client.renderer.rendertype.RenderType;
 import net.minecraft.client.renderer.state.level.CameraRenderState;
 import net.minecraft.core.BlockPos;
+import net.minecraft.world.level.Level;
+import net.minecraft.world.level.block.ChestBlock;
+import net.minecraft.world.level.block.state.BlockState;
+import net.minecraft.world.level.block.state.properties.ChestType;
+import net.minecraft.world.phys.AABB;
 import net.minecraft.world.phys.Vec3;
 import net.minecraft.world.phys.shapes.Shapes;
 import org.joml.Matrix4fStack;
 
+import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Set;
 
 public class Marking {
 	static BlockPos target;
@@ -66,18 +74,19 @@ public class Marking {
 
 		PoseStack ps = new PoseStack();
 		ps.mulPose(camera.viewRotationMatrix);
+		List<AABB> boxes = boxes(blocks);
 
 		if (type != Settings.MarkType.OUTLINE) {
 			BufferBuilder fill = begin(MarkingRenderType.FILL_THROUGH_WALLS);
-			for (BlockPos p : blocks) {
-				fillBox(fill, ps.last(), p.getX() - cam.x, p.getY() - cam.y, p.getZ() - cam.z, fillArgb);
+			for (AABB box : boxes) {
+				fillBox(fill, ps.last(), box.minX - cam.x, box.minY - cam.y, box.minZ - cam.z, box.getXsize(), box.getYsize(), box.getZsize(), fillArgb);
 			}
 			flush(MarkingRenderType.FILL_THROUGH_WALLS, fill);
 		}
 		if (type != Settings.MarkType.FILL) {
 			BufferBuilder lines = begin(MarkingRenderType.LINES_THROUGH_WALLS);
-			for (BlockPos p : blocks) {
-				ShapeRenderer.renderShape(ps, lines, Shapes.block(), p.getX() - cam.x, p.getY() - cam.y, p.getZ() - cam.z, argb, 2.0f);
+			for (AABB box : boxes) {
+				ShapeRenderer.renderShape(ps, lines, Shapes.create(0, 0, 0, box.getXsize(), box.getYsize(), box.getZsize()), box.minX - cam.x, box.minY - cam.y, box.minZ - cam.z, argb, 2.0f);
 			}
 			flush(MarkingRenderType.LINES_THROUGH_WALLS, lines);
 		}
@@ -94,8 +103,26 @@ public class Marking {
 		if (mesh != null) type.draw(mesh);
 	}
 
-	private static void fillBox(BufferBuilder b, PoseStack.Pose pose, double x, double y, double z, int argb) {
-		float x0 = (float) x, y0 = (float) y, z0 = (float) z, x1 = x0 + 1f, y1 = y0 + 1f, z1 = z0 + 1f;
+	private static List<AABB> boxes(List<BlockPos> blocks) {
+		Level level = Minecraft.getInstance().level;
+		Set<BlockPos> done = new HashSet<>();
+		List<AABB> out = new ArrayList<>();
+		for (BlockPos p : blocks) {
+			if (!done.add(p)) continue;
+			AABB box = new AABB(p);
+			BlockState s = level.getBlockState(p);
+			if (s.getBlock() instanceof ChestBlock && s.getValue(ChestBlock.TYPE) != ChestType.SINGLE) {
+				BlockPos other = p.relative(ChestBlock.getConnectedDirection(s));
+				done.add(other);
+				box = box.minmax(new AABB(other));
+			}
+			out.add(box);
+		}
+		return out;
+	}
+
+	private static void fillBox(BufferBuilder b, PoseStack.Pose pose, double x, double y, double z, double dx, double dy, double dz, int argb) {
+		float x0 = (float) x, y0 = (float) y, z0 = (float) z, x1 = (float) (x + dx), y1 = (float) (y + dy), z1 = (float) (z + dz);
 		quad(b, pose, argb, x0, y0, z0, x1, y0, z0, x1, y0, z1, x0, y0, z1);
 		quad(b, pose, argb, x0, y1, z0, x0, y1, z1, x1, y1, z1, x1, y1, z0);
 		quad(b, pose, argb, x0, y0, z0, x0, y1, z0, x1, y1, z0, x1, y0, z0);
