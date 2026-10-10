@@ -38,9 +38,10 @@ import java.util.Map;
 public class ContainerIndex {
     private static final Gson GSON = new GsonBuilder().setPrettyPrinting().create();
     private static Map<String, Map<String, Entry>> data = new HashMap<>();
-    private static Map<String, List<Hit>> byItem = new HashMap<>();
+    private static List<Found> decoded;
     private static Path file;
     private static boolean dirty;
+    private static long loadedAt;
 
     record Entry(List<JsonElement> stacks, long time) {}
     record Hit(String dim, String pos, int count) {}
@@ -49,6 +50,7 @@ public class ContainerIndex {
         file = FabricLoader.getInstance().getConfigDir().resolve("containersearch").resolve(worldKey + ".json");
         data = new HashMap<>();
         dirty = false;
+        loadedAt = System.currentTimeMillis();
         if (Files.exists(file)) {
             try {
                 Map<String, Map<String, Entry>> loaded = read(file);
@@ -152,18 +154,7 @@ public class ContainerIndex {
     }
 
     private static void rebuild() {
-        byItem.clear();
-        for (var dim : data.entrySet()) {
-            for (var chest : dim.getValue().entrySet()) {
-                if (chest.getValue().stacks() == null) continue;
-                for (JsonElement el : chest.getValue().stacks()) {
-                    JsonObject o = el.getAsJsonObject();
-                    int count = o.has("count") ? o.get("count").getAsInt() : 1;
-                    byItem.computeIfAbsent(o.get("id").getAsString(), k -> new ArrayList<>())
-                            .add(new Hit(dim.getKey(), chest.getKey(), count));
-                }
-            }
-        }
+        decoded = null;
     }
 
     static void save() {
@@ -247,7 +238,7 @@ public class ContainerIndex {
     //deletes entries if the container is destroyed
     static void prune(Level level) {
         Map<String, Entry> inDim = data.get(level.dimension().location().toString());
-        if (inDim == null || inDim.isEmpty()) return;
+        if (inDim == null || inDim.isEmpty() || System.currentTimeMillis() - loadedAt < 15000) return;
         List<String> gone = new ArrayList<>();
         for (String key : inDim.keySet()) {
             String[] p = key.split(",");
@@ -257,6 +248,8 @@ public class ContainerIndex {
             if (be == null || !Unchecked.isContainer(be)) gone.add(key);
         }
         if (gone.isEmpty()) return;
+        ContainerSearch.LOGGER.info("PRUNE removing {} of {} entries, first {}", gone.size(), inDim.size(), gone.get(0));
+        if (gone.size() > 10) backup();
         for (String key : gone) inDim.remove(key);
         rebuild();
         dirty = true;
@@ -292,23 +285,28 @@ public class ContainerIndex {
     record Found(ItemStack stack, String dim, BlockPos pos) {}
 
     static List<Found> allItems(String playerDim, int chunkX, int chunkZ, int range) {
-        List<Found> out = new ArrayList<>();
-        for (var dim : data.entrySet()) {
-            if (range != INFINITE && !dim.getKey().equals(playerDim)) continue;
-            for (var chest : dim.getValue().entrySet()) {
-                if (chest.getValue().stacks() == null) continue;
-                String[] p = chest.getKey().split(",");
-                BlockPos pos = new BlockPos(Integer.parseInt(p[0]), Integer.parseInt(p[1]), Integer.parseInt(p[2]));
-                if (range != INFINITE) {
-                    int dx = Math.abs((pos.getX() >> 4) - chunkX);
-                    int dz = Math.abs((pos.getZ() >> 4) - chunkZ);
-                    if (Math.max(dx, dz) > range) continue;
-                }
-                for (JsonElement el : chest.getValue().stacks()) {
-                    ItemStack stack = decode(el);
-                    if (!stack.isEmpty()) mergeInto(out, new Found(stack, dim.getKey(), pos));
+        if (decoded == null) {
+            List<Found> all = new ArrayList<>();
+            for (var dim : data.entrySet()) {
+                for (var chest : dim.getValue().entrySet()) {
+                    if (chest.getValue().stacks() == null) continue;
+                    String[] p = chest.getKey().split(",");
+                    BlockPos pos = new BlockPos(Integer.parseInt(p[0]), Integer.parseInt(p[1]), Integer.parseInt(p[2]));
+                    for (JsonElement el : chest.getValue().stacks()) {
+                        ItemStack stack = decode(el);
+                        if (!stack.isEmpty()) mergeInto(all, new Found(stack, dim.getKey(), pos));
+                    }
                 }
             }
+            decoded = all;
+        }
+        if (range == INFINITE) return decoded;
+        List<Found> out = new ArrayList<>();
+        for (Found f : decoded) {
+            if (!f.dim().equals(playerDim)) continue;
+            int dx = Math.abs((f.pos().getX() >> 4) - chunkX);
+            int dz = Math.abs((f.pos().getZ() >> 4) - chunkZ);
+            if (Math.max(dx, dz) <= range) out.add(f);
         }
         return out;
     }

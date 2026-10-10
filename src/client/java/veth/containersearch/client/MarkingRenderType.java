@@ -15,7 +15,7 @@ public class MarkingRenderType extends RenderType {
 	public static final RenderType FILL_THROUGH_WALLS = create(
 			"container_search_fill",
 			DefaultVertexFormat.POSITION_COLOR,
-			VertexFormat.Mode.TRIANGLE_STRIP,
+			VertexFormat.Mode.QUADS,
 			1536,
 			false,
 			true,
