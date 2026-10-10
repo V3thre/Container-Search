@@ -2,6 +2,7 @@ package veth.containersearch.client;
 
 import com.mojang.blaze3d.systems.RenderSystem;
 import com.mojang.blaze3d.vertex.BufferBuilder;
+import com.mojang.blaze3d.vertex.BufferUploader;
 import com.mojang.blaze3d.vertex.DefaultVertexFormat;
 import com.mojang.blaze3d.vertex.MeshData;
 import com.mojang.blaze3d.vertex.PoseStack;
@@ -14,11 +15,20 @@ import net.minecraft.client.renderer.FogParameters;
 import net.minecraft.client.renderer.RenderType;
 import net.minecraft.client.renderer.ShapeRenderer;
 import net.minecraft.core.BlockPos;
+import net.minecraft.world.level.Level;
+import net.minecraft.world.level.block.ChestBlock;
+import net.minecraft.world.level.block.state.BlockState;
+import net.minecraft.world.level.block.state.properties.ChestType;
 import net.minecraft.world.phys.AABB;
 import net.minecraft.world.phys.Vec3;
+import org.joml.Matrix4f;
 import org.joml.Matrix4fStack;
+import org.lwjgl.opengl.GL11;
 
+import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Set;
 
 public class Marking {
 	static BlockPos target;
@@ -26,6 +36,14 @@ public class Marking {
 
 	static long start;
 	private static final long FADE_MS = 1000;
+
+	private static final int[][] FACES = {
+			{0, 0, 0, 1, 0, 0, 1, 0, 1, 0, 0, 1},
+			{0, 1, 0, 0, 1, 1, 1, 1, 1, 1, 1, 0},
+			{0, 0, 0, 0, 1, 0, 1, 1, 0, 1, 0, 0},
+			{0, 0, 1, 1, 0, 1, 1, 1, 1, 0, 1, 1},
+			{0, 0, 0, 0, 0, 1, 0, 1, 1, 0, 1, 0},
+			{1, 0, 0, 1, 1, 0, 1, 1, 1, 1, 0, 1}};
 
 	static void set(String d, BlockPos pos) { dim = d; target = pos; start = System.currentTimeMillis(); }
 	static void clear() { target = null; }
@@ -71,20 +89,27 @@ public class Marking {
 
 		PoseStack ps = new PoseStack();
 		ps.mulPose(ctx.positionMatrix());
+		List<AABB> boxes = boxes(blocks, cam);
 
 		if (type != Settings.MarkType.OUTLINE) {
-			BufferBuilder fill = Tesselator.getInstance().begin(VertexFormat.Mode.TRIANGLE_STRIP, DefaultVertexFormat.POSITION_COLOR);
-			for (BlockPos p : blocks) {
-				AABB box = new AABB(p).move(-cam.x, -cam.y, -cam.z);
-				ShapeRenderer.addChainedFilledBoxVertices(ps, fill,
-						box.minX, box.minY, box.minZ, box.maxX, box.maxY, box.maxZ, r, gr, b, 0.3f * alpha);
+			BufferBuilder fill = Tesselator.getInstance().begin(VertexFormat.Mode.QUADS, DefaultVertexFormat.POSITION_COLOR);
+			Matrix4f pose = ps.last().pose();
+			for (AABB box : boxes) {
+				float[] lo = {(float) box.minX, (float) box.minY, (float) box.minZ};
+				float[] hi = {(float) box.maxX, (float) box.maxY, (float) box.maxZ};
+				for (int[] face : FACES) {
+					for (int i = 0; i < 12; i += 3) {
+						fill.addVertex(pose, (face[i] == 0 ? lo : hi)[0], (face[i + 1] == 0 ? lo : hi)[1], (face[i + 2] == 0 ? lo : hi)[2])
+								.setColor(r, gr, b, 0.3f * alpha);
+					}
+				}
 			}
 			flush(MarkingRenderType.FILL_THROUGH_WALLS, fill);
 		}
 		if (type != Settings.MarkType.FILL) {
 			BufferBuilder lines = Tesselator.getInstance().begin(VertexFormat.Mode.LINES, DefaultVertexFormat.POSITION_COLOR_NORMAL);
-			for (BlockPos p : blocks) {
-				ShapeRenderer.renderLineBox(ps, lines, new AABB(p).move(-cam.x, -cam.y, -cam.z), r, gr, b, alpha);
+			for (AABB box : boxes) {
+				ShapeRenderer.renderLineBox(ps, lines, box, r, gr, b, alpha);
 			}
 			flush(MarkingRenderType.LINES_THROUGH_WALLS, lines);
 		}
@@ -94,8 +119,33 @@ public class Marking {
 		mv.popMatrix();
 	}
 
+	private static List<AABB> boxes(List<BlockPos> blocks, Vec3 cam) {
+		Level level = Minecraft.getInstance().level;
+		Set<BlockPos> done = new HashSet<>();
+		List<AABB> out = new ArrayList<>();
+		for (BlockPos p : blocks) {
+			if (!done.add(p)) continue;
+			AABB box = new AABB(p);
+			BlockState s = level.getBlockState(p);
+			if (s.getBlock() instanceof ChestBlock && s.getValue(ChestBlock.TYPE) != ChestType.SINGLE) {
+				BlockPos other = p.relative(ChestBlock.getConnectedDirection(s));
+				done.add(other);
+				box = box.minmax(new AABB(other));
+			}
+			out.add(box.move(-cam.x, -cam.y, -cam.z));
+		}
+		return out;
+	}
+
 	private static void flush(RenderType type, BufferBuilder builder) {
 		MeshData mesh = builder.build();
-		if (mesh != null) type.draw(mesh);
+		if (mesh == null) return;
+		type.setupRenderState();
+		RenderSystem.enableDepthTest();
+		RenderSystem.depthFunc(GL11.GL_ALWAYS);
+		RenderSystem.depthMask(false);
+		BufferUploader.drawWithShader(mesh);
+		RenderSystem.depthMask(true);
+		type.clearRenderState();
 	}
 }
